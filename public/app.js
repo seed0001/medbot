@@ -236,11 +236,7 @@ $('chat-form').addEventListener('submit', async (e) => {
 async function loadMessages() {
   const { messages } = await api('/api/messages');
   $('messages').innerHTML = '';
-  if (messages.length === 0) {
-    addMsg('assistant', "Hi! I'm MedBot, your health-tracking assistant. You can tell me things like:\n\n• \"Blood sugar 182, took 4 units\" — I'll log it and email you in 2 hours to re-check\n• \"Took my morning metformin\"\n• \"I had a turkey sandwich and an apple for lunch\"\n• \"I see Dr. Smith next Tuesday at 2pm\"\n• \"Make me a list of questions for my doctor\"\n\nI keep everything in your Log, draw Charts, and can put together a report for your doctor. I never give medical or dosing advice — I'm here to keep good records.");
-  } else {
-    messages.forEach((m) => addMsg(m.role, m.content));
-  }
+  messages.forEach((m) => addMsg(m.role, m.content));
 }
 
 // ---- Log tab ----
