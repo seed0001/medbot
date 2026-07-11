@@ -11,7 +11,8 @@ const { nowLocalString, TIMEZONE } = require('./time');
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const HISTORY_MESSAGES = 30;
-const MAX_TOOL_ROUNDS = 8;
+const MAX_TOOL_ROUNDS = 12;
+const ROUTER_HISTORY_MESSAGES = 6;
 
 function systemPrompt() {
   return `You are Amy, a friendly personal health assistant. You help the user keep an accurate log of their health, remember things for them, and stay organized — like a patient, capable companion who never gets tired of helping.
@@ -370,9 +371,58 @@ async function callOpenRouter(messages, key, model, withTools = true) {
   return data.choices[0].message;
 }
 
+// ---- Pass 1: fast routing pre-pass ----
+// A cheap model classifies the message first — what it's about, which tools
+// the main model will likely need and in what order, values it can pre-extract
+// — so the main model starts with a plan instead of figuring everything out
+// mid-reply. Fails open: any error just means no hints.
+
+function routerPrompt() {
+  const toolList = TOOLS.map((t) => `- ${t.function.name}: ${t.function.description.split('.')[0]}`).join('\n');
+  return `You are the fast routing pre-pass for Amy, a voice-first health assistant. You NEVER reply to the user and NEVER call tools — you only classify their newest message so the main model can act on it efficiently.
+
+The main model has these tools:
+${toolList}
+
+Messages arrive via speech-to-text, so interpret likely mis-hearings ("met forming" = metformin, "blood sugar one eighty two" = 182).
+
+Reply with STRICT JSON only (no markdown, no commentary):
+{
+  "topic": "short label, e.g. glucose_log | meds | meals | appointment | reminders | question | document | smalltalk | mixed",
+  "user_wants": "one plain sentence saying what the user wants",
+  "planned_actions": [ { "tool": "tool_name", "why": "brief reason", "args_hint": { } } ],
+  "extracted": { "numbers, medication names, times, dates found in the message" },
+  "multi_step": true/false,
+  "safety_flag": null or "low_glucose" or "very_low_glucose" or "high_glucose" or "urgent_symptoms",
+  "needs_clarification": null or "the one thing worth asking before acting"
+}
+
+List planned_actions in execution order; use an empty array when it's just conversation. If several things are asked at once, include an action per item. Never refuse anything — you only classify.`;
+}
+
+async function routeMessage(history, key, routerModel) {
+  const recent = history.slice(-ROUTER_HISTORY_MESSAGES);
+  const messages = [
+    { role: 'system', content: routerPrompt() },
+    ...recent.map((m, i) => ({
+      role: m.role,
+      content: (i === recent.length - 1 ? 'NEWEST MESSAGE (classify this): ' : '') + m.content,
+    })),
+  ];
+  try {
+    const reply = await callOpenRouter(messages, key, routerModel, false);
+    const route = parseJsonLoose(reply.content);
+    return route && typeof route === 'object' ? route : null;
+  } catch (err) {
+    console.warn('Router pre-pass failed (continuing without hints):', err.message.slice(0, 200));
+    return null;
+  }
+}
+
+// ---- Pass 2: the main model acts and replies ----
 // Handle one user message: store it, run the model (with tool calls) and store/return the reply.
 async function chat(userId, userText) {
-  const { key, model, persona } = resolveApiConfig();
+  const { key, model, routerModel, persona } = resolveApiConfig();
   if (!key) {
     throw new Error('No OpenRouter API key configured yet — the administrator needs to add one in the Admin tab.');
   }
@@ -383,6 +433,9 @@ async function chat(userId, userText) {
     'SELECT role, content FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT ?'
   ).all(userId, HISTORY_MESSAGES).reverse();
 
+  // Pass 1: cheap classifier plans the work.
+  const route = await routeMessage(history, key, routerModel);
+
   const pending = pendingReminder(userId);
   const context = pending
     ? `\n\nCurrent state: a glucose follow-up reminder email is scheduled for ${pending.due_at} (UTC).`
@@ -392,6 +445,12 @@ async function chat(userId, userText) {
     { role: 'system', content: systemPrompt() + personaSection(persona) + memoryContext(userId) + context },
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
+  if (route) {
+    messages.push({
+      role: 'system',
+      content: `Routing pre-pass for the newest message (hints from a fast classifier — verify against the actual message; it may be wrong or incomplete):\n${JSON.stringify(route)}\nWork through every planned action that checks out, back to back, before replying. If a safety_flag is set, apply the safety rules first.`,
+    });
+  }
 
   let reply = await callOpenRouter(messages, key, model);
   let rounds = 0;
