@@ -1,0 +1,12 @@
+{
+  "appId": "app.medbot.amy",
+  "appName": "Amy",
+  "webDir": "www",
+  "server": {
+    "url": "https://medbot-production-10ae.up.railway.app",
+    "allowNavigation": ["medbot-production-10ae.up.railway.app"]
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

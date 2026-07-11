@@ -11,10 +11,16 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@capacitor-community/speech-recognition": "^7.0.1",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.3.0",
     "cookie-parser": "^1.4.6",
     "express": "^4.19.2",
     "nodemailer": "^6.9.14"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1"
   }
 }

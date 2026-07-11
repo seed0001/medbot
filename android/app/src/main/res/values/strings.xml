@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Amy</string>
+    <string name="title_activity_main">Amy</string>
+    <string name="package_name">app.medbot.amy</string>
+    <string name="custom_url_scheme">app.medbot.amy</string>
+</resources>

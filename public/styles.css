@@ -44,6 +44,8 @@ body {
 }
 .auth-buttons { display: flex; gap: 8px; }
 .auth-buttons button { flex: 1; }
+.auth-card .get-app { display: block; margin-top: 14px; padding: 14px; font-size: 17px; }
+footer .get-app { color: var(--accent); margin-left: 6px; }
 
 /* ---- Buttons ---- */
 button, .btn {
