@@ -214,6 +214,16 @@
           </datalist>
           <span class="hint">Any OpenRouter model that supports tool calling. Default: <span id="admin-default-model"></span></span>
         </label>
+        <label>Fast router model
+          <input type="text" id="admin-router-model" list="router-model-list" placeholder="leave blank for default">
+          <datalist id="router-model-list">
+            <option value="google/gemini-2.5-flash-lite"></option>
+            <option value="openai/gpt-4o-mini"></option>
+            <option value="anthropic/claude-haiku-4.5"></option>
+            <option value="google/gemini-2.5-flash"></option>
+          </datalist>
+          <span class="hint">Cheap, fast model that pre-classifies each message (what it's about, which tools to use) before the main model acts. Default: <span id="admin-default-router-model"></span></span>
+        </label>
         <label>Fish Audio API key (voice replies)
           <input type="password" id="admin-fish-key" placeholder="paste your Fish Audio key" autocomplete="off">
           <span class="hint" id="admin-fish-status"></span>

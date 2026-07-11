@@ -582,6 +582,8 @@ async function loadAdmin() {
       : '⚠️ No key configured. Chat will not work until you add one (openrouter.ai/keys).';
   $('admin-model').value = s.model;
   $('admin-default-model').textContent = s.default_model;
+  $('admin-router-model').value = s.router_model;
+  $('admin-default-router-model').textContent = s.default_router_model;
   $('admin-persona').value = s.persona;
   $('admin-fish-key').value = '';
   $('admin-fish-status').textContent = s.fish_key_set
@@ -622,6 +624,7 @@ $('admin-form').addEventListener('submit', async (e) => {
   try {
     const body = {
       model: $('admin-model').value,
+      router_model: $('admin-router-model').value,
       persona: $('admin-persona').value,
       tts_voice: $('admin-tts-voice').value,
     };

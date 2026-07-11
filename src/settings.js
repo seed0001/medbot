@@ -1,7 +1,10 @@
 const db = require('./db');
 
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4.5';
-const KEYS = ['openrouter_key', 'model', 'persona', 'fish_audio_key', 'tts_voice'];
+// Fast, cheap model for the routing pre-pass that classifies each message
+// before the main model acts on it.
+const DEFAULT_ROUTER_MODEL = 'google/gemini-2.5-flash-lite';
+const KEYS = ['openrouter_key', 'model', 'router_model', 'persona', 'fish_audio_key', 'tts_voice'];
 
 // Site-wide settings, set by the admin, applying to every account.
 function getAppSettings() {
@@ -28,6 +31,7 @@ function resolveApiConfig() {
   return {
     key: s.openrouter_key || process.env.OPENROUTER_API_KEY || null,
     model: s.model || process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
+    routerModel: s.router_model || process.env.OPENROUTER_ROUTER_MODEL || DEFAULT_ROUTER_MODEL,
     persona: s.persona,
   };
 }
@@ -41,6 +45,8 @@ function publicAppSettings() {
     env_key_available: Boolean(process.env.OPENROUTER_API_KEY),
     model: s.model || '',
     default_model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
+    router_model: s.router_model || '',
+    default_router_model: process.env.OPENROUTER_ROUTER_MODEL || DEFAULT_ROUTER_MODEL,
     persona: s.persona || '',
     fish_key_set: Boolean(s.fish_audio_key),
     fish_key_hint: s.fish_audio_key ? '…' + s.fish_audio_key.slice(-4) : null,
@@ -50,9 +56,9 @@ function publicAppSettings() {
 }
 
 // Fields left undefined are unchanged; an empty string clears a field.
-function saveAppSettings({ openrouter_key, model, persona, fish_audio_key, tts_voice }) {
-  const limits = { openrouter_key: 200, model: 120, persona: 2000, fish_audio_key: 200, tts_voice: 120 };
-  const incoming = { openrouter_key, model, persona, fish_audio_key, tts_voice };
+function saveAppSettings({ openrouter_key, model, router_model, persona, fish_audio_key, tts_voice }) {
+  const limits = { openrouter_key: 200, model: 120, router_model: 120, persona: 2000, fish_audio_key: 200, tts_voice: 120 };
+  const incoming = { openrouter_key, model, router_model, persona, fish_audio_key, tts_voice };
   if (incoming.openrouter_key !== undefined) {
     const k = String(incoming.openrouter_key).trim();
     if (k && !/^sk-or-/.test(k)) {
