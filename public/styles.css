@@ -87,6 +87,12 @@ main { flex: 1; display: flex; flex-direction: column; overflow: hidden; max-wid
 
 #chat-form { display: flex; gap: 8px; }
 #chat-input { flex: 1; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; }
+#mic-btn { font-size: 18px; padding: 8px 14px; }
+#mic-btn.listening { background: var(--accent); border-color: var(--accent); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.45); }
+  50% { box-shadow: 0 0 0 8px rgba(198, 40, 40, 0); }
+}
 
 /* ---- Log ---- */
 .log-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }

@@ -134,6 +134,55 @@ $('chat-form').addEventListener('submit', async (e) => {
   input.focus();
 });
 
+// ---- Voice input (browser speech recognition; button hides if unsupported) ----
+(() => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const micBtn = $('mic-btn');
+  if (!SR) {
+    micBtn.classList.add('hidden');
+    return;
+  }
+  const rec = new SR();
+  rec.lang = navigator.language || 'en-US';
+  rec.interimResults = true;
+  let listening = false;
+  let baseText = '';
+
+  const setListening = (on) => {
+    listening = on;
+    micBtn.classList.toggle('listening', on);
+    micBtn.textContent = on ? '⏹' : '🎤';
+    micBtn.title = on ? 'Stop listening' : 'Speak instead of typing';
+  };
+
+  micBtn.addEventListener('click', () => {
+    if (listening) {
+      rec.stop();
+      return;
+    }
+    baseText = $('chat-input').value.trim();
+    try {
+      rec.start();
+      setListening(true);
+    } catch { /* already started */ }
+  });
+
+  rec.onresult = (e) => {
+    const spoken = Array.from(e.results).map((r) => r[0].transcript).join(' ').trim();
+    $('chat-input').value = baseText ? baseText + ' ' + spoken : spoken;
+  };
+  rec.onend = () => {
+    setListening(false);
+    $('chat-input').focus();
+  };
+  rec.onerror = (e) => {
+    setListening(false);
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      addMsg('assistant', '⚠️ I couldn\'t use the microphone — your browser blocked it. Click the padlock/mic icon in the address bar and allow microphone access, then try again.');
+    }
+  };
+})();
+
 async function loadMessages() {
   const { messages } = await api('/api/messages');
   $('messages').innerHTML = '';
