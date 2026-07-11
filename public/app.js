@@ -176,6 +176,8 @@ $('chat-form').addEventListener('submit', async (e) => {
     const { reply } = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text }) });
     pending.textContent = reply;
     attachSpeaker(pending);
+    // Voice is on: speak every new reply automatically (button still works to stop/replay).
+    pending.querySelector('.speak-btn')?.click();
   } catch (err) {
     pending.textContent = '⚠️ ' + err.message;
   }
