@@ -4,7 +4,8 @@ const cookieParser = require('cookie-parser');
 
 const db = require('./db');
 const { register, login, destroySession, requireAuth, changePassword, adminSetPassword } = require('./auth');
-const { chat, clearChat } = require('./ai');
+const { chat, clearChat, scanMedicationPhoto } = require('./ai');
+const { listRecurring, cancelRecurring } = require('./recurring');
 const { saveMemory, deleteAnyMemory, listMemories } = require('./memory');
 const { getLog, pendingReminder, stopReminders } = require('./readings');
 const { listMedications, medEvents } = require('./meds');
@@ -20,7 +21,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const PROD = process.env.NODE_ENV === 'production' || Boolean(process.env.RAILWAY_ENVIRONMENT);
 
-app.use(express.json({ limit: '100kb' }));
+// Photo uploads (medication label scans) need a bigger body than everything else.
+const jsonSmall = express.json({ limit: '100kb' });
+const jsonImage = express.json({ limit: '12mb' });
+app.use((req, res, next) => (req.path === '/api/scan-medication' ? jsonImage : jsonSmall)(req, res, next));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -120,11 +124,28 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   if (!text) return res.status(400).json({ error: 'Empty message.' });
   if (text.length > 4000) return res.status(400).json({ error: 'Message too long.' });
   try {
-    const reply = await chat(req.user.id, text);
-    res.json({ reply });
+    res.json(await chat(req.user.id, text));
   } catch (err) {
     console.error('Chat error:', err);
     res.status(500).json({ error: 'The assistant hit an error: ' + err.message });
+  }
+});
+
+// Photograph a medication bottle: a vision model reads the label, then the
+// assistant files it into the medication list and replies as a chat turn.
+app.post('/api/scan-medication', requireAuth, async (req, res) => {
+  const image = String(req.body.image || '');
+  if (!/^data:image\/(jpeg|png|webp);base64,/.test(image)) {
+    return res.status(400).json({ error: 'Expected a JPEG, PNG, or WebP photo.' });
+  }
+  if (image.length > 10 * 1024 * 1024) {
+    return res.status(400).json({ error: 'Photo is too large — please try again.' });
+  }
+  try {
+    res.json(await scanMedicationPhoto(req.user.id, image));
+  } catch (err) {
+    console.error('Medication scan error:', err);
+    res.status(500).json({ error: 'Could not read the photo: ' + err.message });
   }
 });
 
@@ -175,11 +196,29 @@ app.post('/api/tts', requireAuth, async (req, res) => {
   }
 });
 
+// Full recent history, or (with ?after=<id>) only newer messages — the app
+// polls that form so reminders the assistant posts show up while it's open.
 app.get('/api/messages', requireAuth, (req, res) => {
-  const rows = db.prepare(
-    'SELECT role, content, created_at FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT 100'
-  ).all(req.user.id).reverse();
+  const after = parseInt(req.query.after || '', 10);
+  const rows = Number.isFinite(after)
+    ? db.prepare('SELECT id, role, content, created_at FROM messages WHERE user_id = ? AND id > ? ORDER BY id ASC LIMIT 100')
+      .all(req.user.id, after)
+    : db.prepare('SELECT id, role, content, created_at FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT 100')
+      .all(req.user.id).reverse();
   res.json({ messages: rows });
+});
+
+// --- Recurring reminders (managed by chat; the tab lists and deletes) ---
+app.get('/api/recurring', requireAuth, (req, res) => {
+  res.json({ reminders: listRecurring(req.user.id) });
+});
+
+app.delete('/api/recurring/:id', requireAuth, (req, res) => {
+  try {
+    res.json(cancelRecurring(req.user.id, Number(req.params.id)));
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
 });
 
 app.post('/api/clear-chat', requireAuth, async (req, res) => {

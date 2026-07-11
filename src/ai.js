@@ -3,6 +3,7 @@ const { logReading, getLog, stopReminders, pendingReminder, scheduleCustomRemind
 const { addMedication, listMedications, stopMedication, logMedTaken, medEvents } = require('./meds');
 const { logMeal, listMeals } = require('./meals');
 const { addAppointment, listAppointments, cancelAppointment } = require('./appointments');
+const { addRecurring, listRecurring, cancelRecurring } = require('./recurring');
 const { createUserFile, listUserFiles } = require('./filesStore');
 const { resolveApiConfig } = require('./settings');
 const { saveMemory, forgetMemory, searchMemories, memoryContext, summarizeEpisodeIfNeeded } = require('./memory');
@@ -19,6 +20,7 @@ function systemPrompt() {
 - Food: meals with optional carbs and calories
 - Doctor's appointments (a reminder email goes out the day before)
 - Custom one-off reminders ("remind me tonight to...")
+- Recurring reminders ("remind me every morning at 8 to take my metformin"): daily, weekly on chosen days, or every N minutes/hours. When one fires you reach out — the reminder appears in chat and is read aloud, with a backup email. To change one, cancel it and create the new version.
 - Documents: you can create files (notes, summaries, lists, letters) that appear in their Files tab for download
 
 Current date/time: ${nowLocalString()} (${TIMEZONE}). Use this to resolve phrases like "next Tuesday at 2pm" into concrete datetimes.
@@ -221,6 +223,44 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'add_recurring_reminder',
+      description: 'Create a recurring reminder. When it fires, the reminder pops up in chat, is spoken aloud, and a backup email is sent. Use for medicines, blood sugar checks, drinking water, exercise, etc.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'What to remind, addressed to the user, e.g. "Take your metformin (500 mg)"' },
+          frequency: { type: 'string', enum: ['daily', 'weekly', 'interval'] },
+          time: { type: 'string', description: '24-hour local time "HH:MM" — required for daily and weekly' },
+          weekdays: { type: 'array', items: { type: 'string' }, description: 'For weekly: day names, e.g. ["monday","thursday"]' },
+          every_minutes: { type: 'number', description: 'For interval: fire every N minutes (e.g. every 4 hours = 240). Minimum 5.' },
+        },
+        required: ['message', 'frequency'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_recurring_reminders',
+      description: "List the user's active recurring reminders with their ids, schedules, and next fire times.",
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancel_recurring_reminder',
+      description: 'Cancel a recurring reminder by its id (from list_recurring_reminders). Confirm with the user first if it is ambiguous which one they mean.',
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'number' } },
+        required: ['id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'save_memory',
       description: 'Save a lasting fact about the user to long-term memory (allergies, conditions, doctors, family, preferences, goals). One concise fact per call. Do not save routine log entries — those are already in the health log.',
       parameters: {
@@ -290,6 +330,9 @@ function runTool(userId, name, args) {
     case 'create_document': return createUserFile(userId, args.filename, args.content);
     case 'list_files': return { files: listUserFiles(userId) };
     case 'schedule_reminder': return scheduleCustomReminder(userId, args.message, args.minutes_from_now);
+    case 'add_recurring_reminder': return addRecurring(userId, args);
+    case 'list_recurring_reminders': return { reminders: listRecurring(userId) };
+    case 'cancel_recurring_reminder': return cancelRecurring(userId, args.id);
     case 'save_memory': return saveMemory(userId, args.content);
     case 'forget_memory': return forgetMemory(userId, args.id);
     case 'search_memory': return { results: searchMemories(userId, args.query) };
@@ -363,13 +406,64 @@ async function chat(userId, userText) {
   }
 
   const text = reply.content || '(no response)';
-  db.prepare('INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)').run(userId, 'assistant', text);
+  const saved = db.prepare('INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)').run(userId, 'assistant', text);
 
   // Roll older messages into episodic memory in the background.
   const complete = async (msgs) => (await callOpenRouter(msgs, key, model, false)).content || '';
   summarizeEpisodeIfNeeded(userId, complete).catch((e) => console.error('Episode summarization failed:', e.message));
 
-  return text;
+  return { reply: text, reply_id: Number(saved.lastInsertRowid) };
+}
+
+// A model that can read images, used when the configured model can't.
+const VISION_FALLBACK_MODEL = 'anthropic/claude-haiku-4.5';
+
+const VISION_PROMPT = `You read medication labels (prescription bottles, pill boxes, OTC packaging) from photos. Extract ONLY what is actually visible — never guess or fill in typical values. Reply with strict JSON, no markdown, using null for anything unreadable or absent:
+{"is_medication_label": true/false, "name": "...", "strength": "...", "directions": "...", "prescriber": "...", "pharmacy": "...", "rx_number": "...", "quantity": "...", "refills": "...", "other_text": "..."}
+If the photo is not a medication label, set is_medication_label to false and describe what you see in other_text.`;
+
+function parseJsonLoose(raw) {
+  const text = String(raw || '').replace(/```(?:json)?/g, '');
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) return null;
+  try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+}
+
+// Read a medication label photo with a vision model, then run the result
+// through the normal chat flow so the assistant updates the medication list
+// and confirms out loud what it saved.
+async function scanMedicationPhoto(userId, imageDataUrl) {
+  const { key, model } = resolveApiConfig();
+  if (!key) {
+    throw new Error('No OpenRouter API key configured yet — the administrator needs to add one in the Admin tab.');
+  }
+
+  const visionMessages = [
+    { role: 'system', content: VISION_PROMPT },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Read this medication label and return the JSON.' },
+        { type: 'image_url', image_url: { url: imageDataUrl } },
+      ],
+    },
+  ];
+
+  let raw;
+  try {
+    raw = (await callOpenRouter(visionMessages, key, model, false)).content;
+  } catch (err) {
+    console.warn(`Vision read with ${model} failed (${err.message.slice(0, 120)}); retrying with ${VISION_FALLBACK_MODEL}`);
+    raw = (await callOpenRouter(visionMessages, key, VISION_FALLBACK_MODEL, false)).content;
+  }
+
+  const label = parseJsonLoose(raw);
+  const userText = label && label.is_medication_label !== false
+    ? `📷 I scanned a medicine bottle. The label reads: ${JSON.stringify(label)}. If this medication isn't on my list yet, add it with the dose and schedule from the label and tell me clearly what you saved. If it's already on my list, just say so. If any important part was unreadable, mention it.`
+    : `📷 I took a photo to scan a medicine bottle, but it doesn't look like a readable medication label${label?.other_text ? ` (the photo shows: ${label.other_text})` : ''}. Let me know to try again with the label facing the camera in good light.`;
+
+  return chat(userId, userText);
 }
 
 // Clear the conversation. If the LLM is configured, first roll the whole
@@ -389,4 +483,4 @@ async function clearChat(userId) {
   return { cleared: info.changes, summarized };
 }
 
-module.exports = { chat, clearChat };
+module.exports = { chat, clearChat, scanMedicationPhoto };

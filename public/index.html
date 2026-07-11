@@ -31,6 +31,7 @@
     <span class="brand">🩺 MedBot</span>
     <nav id="tabs">
       <button class="tab active" data-tab="chat">Chat</button>
+      <button class="tab" data-tab="reminders">Reminders</button>
       <button class="tab" data-tab="log">Log</button>
       <button class="tab" data-tab="charts">Charts</button>
       <button class="tab" data-tab="appts">Appointments</button>
@@ -54,9 +55,11 @@
 
   <main id="chat-panel" data-panel="chat">
     <div class="chat-toolbar">
+      <button id="scan-btn" class="small" title="Take a photo of a medicine bottle and I'll add it to your list">📷 Scan medicine bottle</button>
       <span class="spacer"></span>
       <button id="clear-chat-btn" class="small" title="Clear this conversation (important details are saved to Memory first)">🧹 Clear chat</button>
     </div>
+    <input type="file" id="scan-input" accept="image/*" capture="environment" class="hidden">
     <div id="messages"></div>
     <form id="chat-form">
       <textarea id="chat-input" placeholder="Press Talk and say what you want — your words show up here." rows="2" maxlength="4000" autocomplete="off"></textarea>
@@ -65,6 +68,16 @@
         <button type="submit" id="send-btn" class="primary">Send ➤</button>
       </div>
     </form>
+  </main>
+
+  <main data-panel="reminders" class="hidden">
+    <section>
+      <h2>Recurring reminders</h2>
+      <p class="hint">Set these up by telling the assistant in Chat — e.g. "Remind me every morning at 8 to take my metformin." When one goes off, the assistant pops up in Chat and says it out loud (plus a backup email).</p>
+      <div class="table-wrap"><table id="reminders-table">
+        <thead><tr><th>Reminder</th><th>Schedule</th><th>Next</th><th></th></tr></thead>
+        <tbody></tbody></table></div>
+    </section>
   </main>
 
   <main data-panel="log" class="hidden">
