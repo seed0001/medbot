@@ -11,7 +11,9 @@ function register(email, password) {
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (existing) throw new Error('An account with that email already exists.');
   const hash = bcrypt.hashSync(password, 10);
-  const info = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)').run(email, hash);
+  // Only the ADMIN_EMAIL account is ever the administrator.
+  const isAdmin = email === db.ADMIN_EMAIL ? 1 : 0;
+  const info = db.prepare('INSERT INTO users (email, password_hash, is_admin) VALUES (?, ?, ?)').run(email, hash, isAdmin);
   return createSession(info.lastInsertRowid);
 }
 
@@ -40,7 +42,7 @@ function requireAuth(req, res, next) {
   const token = req.cookies.session;
   if (token) {
     const row = db.prepare(`
-      SELECT u.id, u.email FROM sessions s JOIN users u ON u.id = s.user_id
+      SELECT u.id, u.email, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token = ? AND s.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now')
     `).get(token);
     if (row) {

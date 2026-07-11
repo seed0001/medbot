@@ -45,7 +45,7 @@ function show(view) {
   $('app-view').classList.toggle('hidden', view === 'auth');
 }
 
-const loaders = { log: loadLog, charts: loadCharts, appts: loadAppointments, files: loadFiles };
+const loaders = { log: loadLog, charts: loadCharts, appts: loadAppointments, files: loadFiles, admin: loadAdmin };
 
 function showTab(tab) {
   document.querySelectorAll('main[data-panel]').forEach((m) => m.classList.toggle('hidden', m.dataset.panel !== tab));
@@ -244,13 +244,60 @@ async function loadFiles() {
   });
 }
 
+// ---- Admin tab ----
+async function loadAdmin() {
+  const s = await api('/api/admin/settings');
+  $('admin-key').value = '';
+  $('admin-key-status').textContent = s.key_set
+    ? `Key saved (${s.key_hint}). Enter a new key to replace it; leave blank to keep it.`
+    : s.env_key_available
+      ? 'No key saved here — using the server environment key.'
+      : '⚠️ No key configured. Chat will not work until you add one (openrouter.ai/keys).';
+  $('admin-model').value = s.model;
+  $('admin-default-model').textContent = s.default_model;
+  $('admin-persona').value = s.persona;
+
+  const { users } = await api('/api/admin/users');
+  fillTable('admin-users', users, (u) => [
+    u.email,
+    u.is_admin ? 'Admin' : 'Member',
+    new Date(u.created_at).toLocaleDateString(),
+    u.readings,
+    u.messages,
+  ]);
+}
+
+$('admin-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('admin-notice').textContent = 'Saving…';
+  try {
+    const body = {
+      model: $('admin-model').value,
+      persona: $('admin-persona').value,
+    };
+    // Only send the key if a new one was typed, so leaving it blank keeps the saved key.
+    if ($('admin-key').value.trim()) body.openrouter_key = $('admin-key').value.trim();
+    await api('/api/admin/settings', { method: 'POST', body: JSON.stringify(body) });
+    $('admin-notice').textContent = '✅ Saved.';
+    loadAdmin();
+  } catch (err) {
+    $('admin-notice').textContent = '⚠️ ' + err.message;
+  }
+});
+
 // ---- Startup ----
 async function enterApp() {
   const me = await api('/api/me');
   $('user-email').textContent = me.email;
+  $('admin-tab').classList.toggle('hidden', !me.isAdmin);
   show('app');
   showTab('chat');
   await loadMessages();
+  if (!me.chatReady) {
+    addMsg('assistant', me.isAdmin
+      ? '⚠️ No OpenRouter API key is set yet — open the Admin tab to add one so chat works.'
+      : '⚠️ The assistant isn\'t connected yet — ask the administrator to add the API key.');
+  }
   if (!me.mailEnabled) {
     addMsg('assistant', "⚠️ Heads up: email isn't configured on the server yet, so reminder emails and emailed reports won't send until SMTP settings are added.");
   }

@@ -34,6 +34,7 @@
       <button class="tab" data-tab="charts">Charts</button>
       <button class="tab" data-tab="appts">Appointments</button>
       <button class="tab" data-tab="files">Files</button>
+      <button class="tab hidden" data-tab="admin" id="admin-tab">Admin</button>
     </nav>
     <div class="header-right">
       <span id="user-email"></span>
@@ -137,6 +138,44 @@
     <div class="table-wrap"><table id="files-table">
       <thead><tr><th>File</th><th>Size</th><th>Modified</th><th></th></tr></thead>
       <tbody></tbody></table></div>
+  </main>
+
+  <main data-panel="admin" class="hidden">
+    <section>
+      <h2>Site-wide AI settings</h2>
+      <p class="hint">These apply to every account on this MedBot.</p>
+      <form id="admin-form" class="admin-form">
+        <label>OpenRouter API key
+          <input type="password" id="admin-key" placeholder="sk-or-..." autocomplete="off">
+          <span class="hint" id="admin-key-status"></span>
+        </label>
+        <label>Model
+          <input type="text" id="admin-model" list="model-list" placeholder="leave blank for default">
+          <datalist id="model-list">
+            <option value="anthropic/claude-sonnet-4.5"></option>
+            <option value="anthropic/claude-haiku-4.5"></option>
+            <option value="openai/gpt-4o"></option>
+            <option value="openai/gpt-4o-mini"></option>
+            <option value="google/gemini-2.5-flash"></option>
+            <option value="meta-llama/llama-3.3-70b-instruct"></option>
+          </datalist>
+          <span class="hint">Any OpenRouter model that supports tool calling. Default: <span id="admin-default-model"></span></span>
+        </label>
+        <label>Assistant persona
+          <textarea id="admin-persona" rows="5" placeholder="e.g. You are Rosie, a patient, cheerful assistant. Speak plainly and warmly, like a trusted friend. Keep answers short."></textarea>
+          <span class="hint">Sets the assistant's personality and tone for everyone. Safety rules (no dosing advice, etc.) always stay in force.</span>
+        </label>
+        <button type="submit" class="primary">Save settings</button>
+        <span id="admin-notice"></span>
+      </form>
+    </section>
+
+    <section>
+      <h2>Accounts</h2>
+      <div class="table-wrap"><table id="admin-users">
+        <thead><tr><th>Email</th><th>Role</th><th>Joined</th><th>Readings</th><th>Messages</th></tr></thead>
+        <tbody></tbody></table></div>
+    </section>
   </main>
 
   <footer class="disclaimer">Not medical advice. If you feel unwell or a reading is dangerously low or high, contact your care team or emergency services.</footer>

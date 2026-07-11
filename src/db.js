@@ -91,6 +91,24 @@ CREATE TABLE IF NOT EXISTS reminders (
   canceled       INTEGER NOT NULL DEFAULT 0
 );
 
+-- Site-wide settings managed by the admin (openrouter_key, model, persona).
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- AI memory: long_term = lasting facts about the user; episodic = summaries of
+-- older conversation stretches (short-term memory is the recent message window).
+CREATE TABLE IF NOT EXISTS memories (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id         INTEGER NOT NULL REFERENCES users(id),
+  kind            TEXT NOT NULL CHECK (kind IN ('long_term','episodic')),
+  content         TEXT NOT NULL,
+  last_message_id INTEGER,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE TABLE IF NOT EXISTS messages (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER NOT NULL REFERENCES users(id),
@@ -105,11 +123,20 @@ CREATE INDEX IF NOT EXISTS idx_meals_user ON meals(user_id, eaten_at);
 CREATE INDEX IF NOT EXISTS idx_appts_user ON appointments(user_id, appt_at);
 CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_at) WHERE sent_at IS NULL AND canceled = 0;
 CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id, id);
+CREATE INDEX IF NOT EXISTS idx_memories_user ON memories(user_id, kind, id);
 `);
 
 // Migrations for databases created before the health-tracking expansion.
 for (const col of ["type TEXT NOT NULL DEFAULT 'glucose'", 'message TEXT', 'appointment_id INTEGER REFERENCES appointments(id)']) {
   try { db.exec(`ALTER TABLE reminders ADD COLUMN ${col}`); } catch { /* already exists */ }
 }
+try { db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0'); } catch { /* already exists */ }
+db.exec('DROP TABLE IF EXISTS user_settings');
+
+// The administrator is the account matching ADMIN_EMAIL (nobody else can gain
+// admin by registering). Sync the flag at startup in case the setting changed.
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'travisbollenbach@gmail.com').toLowerCase();
+db.prepare('UPDATE users SET is_admin = CASE WHEN email = ? THEN 1 ELSE 0 END').run(ADMIN_EMAIL);
 
 module.exports = db;
+module.exports.ADMIN_EMAIL = ADMIN_EMAIL;

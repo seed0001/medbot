@@ -130,6 +130,14 @@ button.primary-outline, .btn.primary-outline { border-color: var(--accent); colo
   max-width: 240px; white-space: normal; z-index: 5;
 }
 
+/* ---- Admin ---- */
+.admin-form { display: flex; flex-direction: column; gap: 16px; max-width: 620px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+.admin-form label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
+.admin-form input, .admin-form textarea { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-weight: 400; font-family: inherit; }
+.admin-form .hint { font-weight: 400; }
+.admin-form button { align-self: flex-start; }
+#admin-notice { font-size: 14px; }
+
 /* ---- Misc ---- */
 .error { color: var(--accent); min-height: 20px; margin-top: 8px; font-size: 14px; }
 .disclaimer { color: var(--muted); font-size: 12px; margin-top: 16px; line-height: 1.4; }

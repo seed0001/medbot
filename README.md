@@ -15,7 +15,21 @@ exportable health log:
 - **Documents** — ask the assistant to create files (question lists, summaries, notes);
   they appear in the Files tab for download.
 
-Multi-user: each account has its own log, chat history, files, and reminders.
+Multi-user: each account has its own log, chat history, files, reminders, and AI
+memory. **The account matching `ADMIN_EMAIL` is the administrator** and gets an Admin
+tab to set the OpenRouter API key, the model, and the assistant's persona for the
+whole site — friends and family just sign up and chat.
+
+## AI memory
+
+The assistant remembers across three layers, per user:
+
+- **Short-term** — the recent conversation window sent with every message.
+- **Long-term** — lasting facts it saves as it learns them (allergies, doctors,
+  preferences, goals) and can update or delete when corrected.
+- **Episodic** — when older messages age out of the short-term window, the AI
+  automatically summarizes them into dated episode memories it can search later
+  ("what did we talk about last month?").
 
 > **MedBot is a logging tool, not a medical device, and gives no medical advice.**
 > It will never recommend or adjust doses of insulin or any medication.
@@ -47,13 +61,16 @@ emails and emailed reports are disabled (the UI warns you).
 2. **Attach a volume** to the service (e.g. mount path `/data`) and set the variable
    `DATA_DIR=/data` — otherwise the database and files are wiped on every deploy.
 3. Set the environment variables from `.env.example`:
-   - `OPENROUTER_API_KEY` (required)
    - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` (for emails)
    - `APP_URL` — your public Railway URL (used for links inside emails)
    - `TIMEZONE` — the user's IANA timezone, e.g. `America/Chicago` (Railway runs in UTC)
-   - Optionally `OPENROUTER_MODEL`, `FOLLOWUP_MINUTES`
+   - `ADMIN_EMAIL` — the administrator's email (defaults to the project owner's)
+   - Optionally `FOLLOWUP_MINUTES`, or `OPENROUTER_API_KEY`/`OPENROUTER_MODEL` as
+     fallbacks for the Admin-tab settings
 4. Generate a public domain for the service (Settings → Networking). Railway sets
    `PORT` automatically.
+5. Register with the `ADMIN_EMAIL` address, open the Admin tab, paste your OpenRouter
+   key, pick a model, and set the persona. Everyone else just registers and chats.
 
 ## Stack
 

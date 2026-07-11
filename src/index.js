@@ -11,6 +11,7 @@ const { listMeals } = require('./meals');
 const { listAppointments } = require('./appointments');
 const { listUserFiles, userFilePath, deleteUserFile } = require('./filesStore');
 const { collectData, buildReportHtml, emailReport, csvOf } = require('./report');
+const { publicAppSettings, saveAppSettings, resolveApiConfig } = require('./settings');
 const { mailEnabled } = require('./mailer');
 const scheduler = require('./scheduler');
 
@@ -59,7 +60,40 @@ app.post('/api/logout', (req, res) => {
 });
 
 app.get('/api/me', requireAuth, (req, res) => {
-  res.json({ email: req.user.email, mailEnabled: mailEnabled() });
+  res.json({
+    email: req.user.email,
+    isAdmin: Boolean(req.user.is_admin),
+    mailEnabled: mailEnabled(),
+    chatReady: Boolean(resolveApiConfig().key),
+  });
+});
+
+// --- Admin (site-wide settings + user overview) ---
+function requireAdmin(req, res, next) {
+  if (!req.user.is_admin) return res.status(403).json({ error: 'Administrator only.' });
+  next();
+}
+
+app.get('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
+  res.json(publicAppSettings());
+});
+
+app.post('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
+  try {
+    res.json(saveAppSettings(req.body || {}));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
+  const users = db.prepare(`
+    SELECT u.id, u.email, u.is_admin, u.created_at,
+      (SELECT COUNT(*) FROM readings r WHERE r.user_id = u.id) AS readings,
+      (SELECT COUNT(*) FROM messages m WHERE m.user_id = u.id) AS messages
+    FROM users u ORDER BY u.id
+  `).all();
+  res.json({ users });
 });
 
 // --- Chat ---
@@ -167,6 +201,6 @@ app.post('/api/stop-reminders', requireAuth, (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`MedBot listening on port ${PORT}`);
-  if (!process.env.OPENROUTER_API_KEY) console.warn('OPENROUTER_API_KEY not set — chat will not work.');
+  if (!process.env.OPENROUTER_API_KEY) console.log('No server-wide OPENROUTER_API_KEY — users must add their own key in Settings.');
   scheduler.start();
 });

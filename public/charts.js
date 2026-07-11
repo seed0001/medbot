@@ -1,6 +1,9 @@
 // Minimal SVG chart renderers: a time-series line chart and a daily bar chart.
 // Single series per chart (no legend needed — the title names it); hover
 // tooltips on both; recessive grid and axes.
+// Wrapped in an IIFE so helpers don't collide with app.js globals; exposes
+// window.renderTimeSeries and window.renderDailyBars.
+(() => {
 
 const CHART = {
   grid: '#e1e0d9',
@@ -190,3 +193,7 @@ function renderDailyBars(wrap, entries, { color, unit, rangeDays, agg = 'sum' })
   });
   wrap.appendChild(svg);
 }
+
+window.renderTimeSeries = renderTimeSeries;
+window.renderDailyBars = renderDailyBars;
+})();

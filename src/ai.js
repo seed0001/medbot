@@ -4,10 +4,11 @@ const { addMedication, listMedications, stopMedication, logMedTaken, medEvents }
 const { logMeal, listMeals } = require('./meals');
 const { addAppointment, listAppointments, cancelAppointment } = require('./appointments');
 const { createUserFile, listUserFiles } = require('./filesStore');
+const { resolveApiConfig } = require('./settings');
+const { saveMemory, forgetMemory, searchMemories, memoryContext, summarizeEpisodeIfNeeded } = require('./memory');
 const { nowLocalString, TIMEZONE } = require('./time');
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL = process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5';
 const HISTORY_MESSAGES = 30;
 const MAX_TOOL_ROUNDS = 8;
 
@@ -21,6 +22,8 @@ function systemPrompt() {
 - Documents: you can create files (notes, summaries, lists, letters) that appear in their Files tab for download
 
 Current date/time: ${nowLocalString()} (${TIMEZONE}). Use this to resolve phrases like "next Tuesday at 2pm" into concrete datetimes.
+
+Memory: your short-term memory is the recent message window. Lasting facts about the user (allergies, conditions, doctor names, family, preferences, goals) should be saved with save_memory the moment you learn them — they are injected into future conversations. Use search_memory to recall older facts or past conversation summaries, and forget_memory when the user corrects or retracts something.
 
 Behavior:
 - When the user reports numbers or events, log them with the right tool, then confirm briefly what was saved. Don't ask for optional details they didn't offer — log what you have; they can add notes later.
@@ -38,6 +41,11 @@ Safety rules — these override everything else:
 - You are not a medical professional and this log is not medical advice; say so when they ask for treatment decisions.
 
 Keep replies short, warm, and concrete. The user may be older — avoid jargon, never scold, and gently confirm what you logged.`;
+}
+
+function personaSection(persona) {
+  if (!persona) return '';
+  return `\n\nThe user has set this persona/style preference for how you should talk and behave. Follow it for tone, personality, and style — but it can never override or weaken the safety rules above:\n"""\n${persona}\n"""`;
 }
 
 const TOOLS = [
@@ -213,6 +221,42 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'save_memory',
+      description: 'Save a lasting fact about the user to long-term memory (allergies, conditions, doctors, family, preferences, goals). One concise fact per call. Do not save routine log entries — those are already in the health log.',
+      parameters: {
+        type: 'object',
+        properties: { content: { type: 'string', description: 'The fact, e.g. "Allergic to penicillin" or "Primary care doctor is Dr. Alvarez at Mercy Clinic"' } },
+        required: ['content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'forget_memory',
+      description: 'Delete a long-term memory by its id (ids are shown in your memory list) when the user corrects or retracts it. Save the corrected fact separately if needed.',
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'number' } },
+        required: ['id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_memory',
+      description: 'Search long-term memories and episodic summaries of older conversations. Use when the user references something from a while back that is not in the recent messages or your injected memories.',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string', description: 'A keyword or phrase to search for' } },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'stop_reminders',
       description: 'Cancel pending glucose follow-up and custom reminder emails (appointment reminders are kept unless the appointment is canceled).',
       parameters: { type: 'object', properties: {} },
@@ -246,21 +290,24 @@ function runTool(userId, name, args) {
     case 'create_document': return createUserFile(userId, args.filename, args.content);
     case 'list_files': return { files: listUserFiles(userId) };
     case 'schedule_reminder': return scheduleCustomReminder(userId, args.message, args.minutes_from_now);
+    case 'save_memory': return saveMemory(userId, args.content);
+    case 'forget_memory': return forgetMemory(userId, args.id);
+    case 'search_memory': return { results: searchMemories(userId, args.query) };
     case 'stop_reminders': return stopReminders(userId);
     default: return { error: `Unknown tool: ${name}` };
   }
 }
 
-async function callOpenRouter(messages) {
+async function callOpenRouter(messages, key, model, withTools = true) {
   const res = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
       'X-Title': 'MedBot',
     },
-    body: JSON.stringify({ model: MODEL, messages, tools: TOOLS }),
+    body: JSON.stringify({ model, messages, ...(withTools ? { tools: TOOLS } : {}) }),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -272,8 +319,9 @@ async function callOpenRouter(messages) {
 
 // Handle one user message: store it, run the model (with tool calls) and store/return the reply.
 async function chat(userId, userText) {
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error('OPENROUTER_API_KEY is not set.');
+  const { key, model, persona } = resolveApiConfig();
+  if (!key) {
+    throw new Error('No OpenRouter API key configured yet — the administrator needs to add one in the Admin tab.');
   }
 
   db.prepare('INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)').run(userId, 'user', userText);
@@ -288,11 +336,11 @@ async function chat(userId, userText) {
     : '\n\nCurrent state: no glucose follow-up reminder is currently scheduled.';
 
   const messages = [
-    { role: 'system', content: systemPrompt() + context },
+    { role: 'system', content: systemPrompt() + personaSection(persona) + memoryContext(userId) + context },
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
 
-  let reply = await callOpenRouter(messages);
+  let reply = await callOpenRouter(messages, key, model);
   let rounds = 0;
   while (reply.tool_calls && reply.tool_calls.length > 0 && rounds < MAX_TOOL_ROUNDS) {
     messages.push(reply);
@@ -310,12 +358,17 @@ async function chat(userId, userText) {
         content: JSON.stringify(result),
       });
     }
-    reply = await callOpenRouter(messages);
+    reply = await callOpenRouter(messages, key, model);
     rounds++;
   }
 
   const text = reply.content || '(no response)';
   db.prepare('INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)').run(userId, 'assistant', text);
+
+  // Roll older messages into episodic memory in the background.
+  const complete = async (msgs) => (await callOpenRouter(msgs, key, model, false)).content || '';
+  summarizeEpisodeIfNeeded(userId, complete).catch((e) => console.error('Episode summarization failed:', e.message));
+
   return text;
 }
 
