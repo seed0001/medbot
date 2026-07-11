@@ -6,8 +6,8 @@ const db = require('./db');
 //  - episodic:   AI-written summaries of older conversation stretches, created
 //                automatically once enough messages age out of the short-term window
 
-const EPISODE_TRIGGER = 40; // summarize once this many messages are unsummarized...
-const EPISODE_KEEP_RECENT = 20; // ...but always leave this many for the short-term window
+const EPISODE_TRIGGER = 80; // summarize once this many messages are unsummarized...
+const EPISODE_KEEP_RECENT = 40; // ...but always leave this many for the short-term window
 const MAX_LONG_TERM = 200;
 
 function saveMemory(userId, content) {
@@ -81,7 +81,7 @@ async function summarizeEpisodeIfNeeded(userId, complete, force = false) {
   const summary = (await complete([
     {
       role: 'system',
-      content: 'You summarize conversation excerpts into compact episode memories for a health-tracking assistant. Write 3-6 sentences in third person capturing: health values logged (glucose, insulin, meds, meals), appointments, how the user was feeling, decisions made, and anything worth recalling weeks later. Include concrete numbers and dates when present. Output only the summary.',
+      content: 'You summarize conversation excerpts into compact episode memories for a health-tracking assistant. Write 3-6 sentences in third person capturing: health values logged (glucose, insulin, meds, meals), appointments, reminders set or canceled, how the user was feeling, decisions made, and anything worth recalling weeks later. Include concrete numbers and dates when present. Output only the summary.',
     },
     { role: 'user', content: transcript },
   ])).trim().slice(0, 2000);
