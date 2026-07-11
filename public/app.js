@@ -196,23 +196,35 @@ $('chat-form').addEventListener('submit', async (e) => {
   }
   const rec = new SR();
   rec.lang = navigator.language || 'en-US';
+  rec.continuous = true;
   rec.interimResults = true;
-  let listening = false;
-  let baseText = '';
+
+  // True push-to-talk toggle: listening continues (auto-restarting through the
+  // browser's silence timeouts) until the button is pressed again.
+  let wantListening = false;
+  let baseText = ''; // whatever was typed before the mic went on
+  let priorFinals = ''; // finalized speech from earlier auto-restarted sessions
+  let sessionFinals = ''; // finalized speech in the current session
+
+  const joined = (...parts) => parts.map((s) => s.trim()).filter(Boolean).join(' ');
 
   const setListening = (on) => {
-    listening = on;
     micBtn.classList.toggle('listening', on);
     micBtn.textContent = on ? '⏹' : '🎤';
     micBtn.title = on ? 'Stop listening' : 'Speak instead of typing';
   };
 
   micBtn.addEventListener('click', () => {
-    if (listening) {
+    if (wantListening) {
+      wantListening = false;
       rec.stop();
+      setListening(false);
       return;
     }
-    baseText = $('chat-input').value.trim();
+    baseText = $('chat-input').value;
+    priorFinals = '';
+    sessionFinals = '';
+    wantListening = true;
     try {
       rec.start();
       setListening(true);
@@ -220,14 +232,31 @@ $('chat-form').addEventListener('submit', async (e) => {
   });
 
   rec.onresult = (e) => {
-    const spoken = Array.from(e.results).map((r) => r[0].transcript).join(' ').trim();
-    $('chat-input').value = baseText ? baseText + ' ' + spoken : spoken;
+    let finals = '';
+    let interim = '';
+    for (const r of e.results) {
+      if (r.isFinal) finals += r[0].transcript + ' ';
+      else interim += r[0].transcript + ' ';
+    }
+    sessionFinals = finals;
+    $('chat-input').value = joined(baseText, priorFinals, sessionFinals, interim);
   };
+
   rec.onend = () => {
+    if (wantListening) {
+      // The browser gave up after a pause — keep going until the user says stop.
+      priorFinals = joined(priorFinals, sessionFinals);
+      sessionFinals = '';
+      try { rec.start(); } catch { setTimeout(() => { if (wantListening) try { rec.start(); } catch {} }, 250); }
+      return;
+    }
     setListening(false);
     $('chat-input').focus();
   };
+
   rec.onerror = (e) => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return; // onend will restart
+    wantListening = false;
     setListening(false);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       addMsg('assistant', '⚠️ I couldn\'t use the microphone — your browser blocked it. Click the padlock/mic icon in the address bar and allow microphone access, then try again.');
