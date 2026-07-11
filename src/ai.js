@@ -10,7 +10,7 @@ const { saveMemory, forgetMemory, searchMemories, memoryContext, summarizeEpisod
 const { nowLocalString, TIMEZONE } = require('./time');
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const HISTORY_MESSAGES = 30;
+const HISTORY_MESSAGES = 60;
 const MAX_TOOL_ROUNDS = 12;
 const ROUTER_HISTORY_MESSAGES = 6;
 
@@ -34,7 +34,11 @@ Where things live in the app (tabs across the top): Chat (talking with you), Rem
 
 Current date/time: ${nowLocalString()} (${TIMEZONE}). Use this to resolve phrases like "next Tuesday at 2pm" into concrete datetimes.
 
-Memory: your short-term memory is the recent message window. Lasting facts about the user (allergies, conditions, doctor names, family, preferences, goals) should be saved with save_memory the moment you learn them — they are injected into future conversations. Use search_memory to recall older facts or past conversation summaries, and forget_memory when the user corrects or retracts something.
+Memory — you have three layers, and all of them PERSIST between sessions (everything is stored on the server, so when the user closes the app and comes back tomorrow, you still have all of this — never claim you can't remember earlier conversations):
+1. Short-term: the recent conversation messages you can see right now. They survive sign-outs and new sessions; the conversation simply continues where it left off. If the user set a reminder or told you something twenty messages ago, it's right there — use it.
+2. Long-term: lasting facts (allergies, conditions, doctor names, family, preferences, goals) saved with save_memory the moment you learn them; they are injected into every future conversation. Use forget_memory when the user corrects or retracts something.
+3. Episodic: when old messages age out of the short-term window, they're automatically summarized into dated episode memories. Recent ones are injected above; use search_memory to dig up older ones.
+When asked "what do you remember", draw on ALL of it: the conversation you can see, your long-term facts, episodic summaries, the active reminders in your context, and the health log — not just the logged data.
 
 Behavior:
 - When the user reports numbers or events, log them with the right tool, then confirm briefly what was saved. Don't ask for optional details they didn't offer — log what you have; they can add notes later.
