@@ -1,5 +1,5 @@
 const db = require('./db');
-const { logReading, getLog, stopReminders, pendingReminder, scheduleCustomReminder, FOLLOWUP_MINUTES } = require('./readings');
+const { logReading, getLog, stopReminders, pendingReminder, FOLLOWUP_MINUTES } = require('./readings');
 const { addMedication, listMedications, stopMedication, logMedTaken, medEvents } = require('./meds');
 const { logMeal, listMeals } = require('./meals');
 const { addAppointment, listAppointments, cancelAppointment } = require('./appointments');
@@ -24,8 +24,7 @@ Everything you can do (when asked "what can you do", explain these in plain, fri
 - Medications: keep their medication list (add/stop) and record each dose actually taken. They can also tap the "📷 Scan medicine bottle" button in Chat to photograph a label — you receive what it says and file it into their list.
 - Food: log meals, with carbs and calories when known
 - Doctor's appointments: track them (a reminder email goes out the day before), list and cancel them
-- One-off reminders ("remind me tonight to...") sent by email
-- Recurring reminders ("remind me every morning at 8 to take my metformin"): daily, weekly on chosen days, or every N minutes/hours. When one fires, YOU reach out — the reminder pops up in chat and is spoken out loud, with a backup email. To change one, cancel it and create the new version. They can also see and delete them in the Reminders tab.
+- Reminders, one-time ("remind me in 20 minutes...", "tonight at 8...") and recurring ("every morning at 8..."): daily, weekly on chosen days, or every N minutes/hours. When one fires, YOU reach out — the reminder pops up in chat and is spoken out loud, with a backup email. All of them show in the Reminders tab, and your current context always lists the active ones. To change one, cancel it and create the new version.
 - Research & questions: answer general health and everyday questions from your knowledge, plainly and honestly — and say so when you're not sure or something is better asked of their care team
 - Documents: create files (notes, question lists for the doctor, summaries, letters) that appear in their Files tab
 - History & trends: summarize their data concretely; the Charts tab has visuals, the Doctor Report button makes a printable summary they can email or print for appointments, and every table exports to CSV
@@ -45,6 +44,8 @@ Behavior:
 - When asked about history or trends, use get_health_summary and answer concretely. Mention the Charts tab for visuals and the Doctor Report button for a printable summary.
 - For documents, write clean, well-organized content. Prefer .md or .txt for notes and .csv for tabular data. Tell them the file is in the Files tab.
 - When a reminder of yours has recently fired in the conversation and they respond ("okay, took it", "done"), log the dose or reading they're confirming.
+- NEVER say you set a reminder, logged something, or saved anything unless you actually called the tool in this conversation and it returned success. If a tool returns an error, tell the user plainly what went wrong.
+- When asked what you remember or what's coming up, answer from your memories, the active reminders in your context, and list_appointments — not just the health log.
 
 Safety rules — these override everything else:
 - NEVER recommend, calculate, or adjust doses of insulin or any medication. Only record what the user says they took. If asked for dosing advice, decline warmly and point them to their prescriber or pharmacist.
@@ -220,14 +221,15 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'schedule_reminder',
-      description: 'Schedule a one-off reminder email, e.g. "remind me at 8pm to take my evening meds".',
+      description: 'Schedule a ONE-TIME reminder, e.g. "remind me in 20 minutes" or "remind me tonight at 8". Like recurring reminders, it pops up in chat, is spoken aloud, gets a backup email, and shows in the Reminders tab.',
       parameters: {
         type: 'object',
         properties: {
-          message: { type: 'string', description: 'What the reminder email should say' },
-          minutes_from_now: { type: 'number', description: 'Minutes from now to send it' },
+          message: { type: 'string', description: 'What to remind, addressed to the user' },
+          in_minutes: { type: 'number', description: 'Fire this many minutes from now (use for "in 5 minutes" style requests)' },
+          at: { type: 'string', description: 'Or a local time "YYYY-MM-DDTHH:MM" (use for "tonight at 8" style requests)' },
         },
-        required: ['message', 'minutes_from_now'],
+        required: ['message'],
       },
     },
   },
@@ -253,7 +255,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'list_recurring_reminders',
-      description: "List the user's active recurring reminders with their ids, schedules, and next fire times.",
+      description: "List the user's active reminders — one-time and recurring — with their ids, schedules, and next fire times.",
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -261,7 +263,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'cancel_recurring_reminder',
-      description: 'Cancel a recurring reminder by its id (from list_recurring_reminders). Confirm with the user first if it is ambiguous which one they mean.',
+      description: 'Cancel a reminder (one-time or recurring) by its id (from list_recurring_reminders or the active reminders in your context). Confirm with the user first if it is ambiguous which one they mean.',
       parameters: {
         type: 'object',
         properties: { id: { type: 'number' } },
@@ -340,7 +342,13 @@ function runTool(userId, name, args) {
     case 'get_health_summary': return healthSummary(userId, args.days || 14);
     case 'create_document': return createUserFile(userId, args.filename, args.content);
     case 'list_files': return { files: listUserFiles(userId) };
-    case 'schedule_reminder': return scheduleCustomReminder(userId, args.message, args.minutes_from_now);
+    case 'schedule_reminder':
+      return addRecurring(userId, {
+        message: args.message,
+        frequency: 'once',
+        in_minutes: args.in_minutes ?? args.minutes_from_now,
+        at: args.at,
+      });
     case 'add_recurring_reminder': return addRecurring(userId, args);
     case 'list_recurring_reminders': return { reminders: listRecurring(userId) };
     case 'cancel_recurring_reminder': return cancelRecurring(userId, args.id);
@@ -437,9 +445,14 @@ async function chat(userId, userText) {
   const route = await routeMessage(history, key, routerModel);
 
   const pending = pendingReminder(userId);
-  const context = pending
+  let context = pending
     ? `\n\nCurrent state: a glucose follow-up reminder email is scheduled for ${pending.due_at} (UTC).`
     : '\n\nCurrent state: no glucose follow-up reminder is currently scheduled.';
+  // Always show the active reminders so "what's coming up?" never draws a blank.
+  const activeReminders = listRecurring(userId).slice(0, 15);
+  context += activeReminders.length
+    ? `\nActive reminders (times in UTC): ${JSON.stringify(activeReminders)}`
+    : '\nActive reminders: none.';
 
   const messages = [
     { role: 'system', content: systemPrompt() + personaSection(persona) + memoryContext(userId) + context },

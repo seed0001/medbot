@@ -38,6 +38,7 @@ function computeNextDue({ freq, time_local, weekdays, interval_minutes }) {
 
 function describeSchedule(r) {
   const at = r.time_local ? ` at ${r.time_local}` : '';
+  if (r.freq === 'once') return 'one time';
   if (r.freq === 'daily') return `every day${at}`;
   if (r.freq === 'weekly') {
     const days = String(r.weekdays).split(',').map((n) => {
@@ -61,15 +62,34 @@ function normalizeWeekdays(input) {
   return [...new Set(nums)].sort();
 }
 
-function addRecurring(userId, { message, frequency, time, weekdays, every_minutes }) {
+function addRecurring(userId, { message, frequency, time, weekdays, every_minutes, in_minutes, at }) {
   const text = String(message || '').trim().slice(0, 300);
   if (!text) throw new Error('A reminder message is required.');
   const freq = String(frequency || '').toLowerCase();
-  if (!['daily', 'weekly', 'interval'].includes(freq)) {
-    throw new Error("frequency must be 'daily', 'weekly', or 'interval'.");
+  if (!['once', 'daily', 'weekly', 'interval'].includes(freq)) {
+    throw new Error("frequency must be 'once', 'daily', 'weekly', or 'interval'.");
   }
 
   const row = { freq, time_local: null, weekdays: null, interval_minutes: null };
+  if (freq === 'once') {
+    let dueAt;
+    if (in_minutes != null) {
+      const mins = Math.round(Number(in_minutes));
+      if (!Number.isFinite(mins) || mins < 1 || mins > MAX_INTERVAL_MINUTES) {
+        throw new Error(`in_minutes must be between 1 and ${MAX_INTERVAL_MINUTES}.`);
+      }
+      dueAt = new Date(Date.now() + mins * 60000);
+    } else if (at) {
+      dueAt = localToUtc(String(at));
+      if (dueAt.getTime() <= Date.now()) throw new Error(`${at} is in the past — one-time reminders need a future time.`);
+    } else {
+      throw new Error("A 'once' reminder needs in_minutes or at (local \"YYYY-MM-DDTHH:MM\").");
+    }
+    const info = db.prepare(`
+      INSERT INTO recurring_reminders (user_id, message, freq, next_due_at) VALUES (?, ?, 'once', ?)
+    `).run(userId, text, dueAt.toISOString());
+    return { reminder: publicView(db.prepare('SELECT * FROM recurring_reminders WHERE id = ?').get(info.lastInsertRowid)) };
+  }
   if (freq === 'interval') {
     const mins = Math.round(Number(every_minutes));
     if (!Number.isFinite(mins) || mins < MIN_INTERVAL_MINUTES || mins > MAX_INTERVAL_MINUTES) {
@@ -139,12 +159,16 @@ async function fireDueRecurring() {
   `).all();
 
   for (const r of due) {
-    try {
-      db.prepare('UPDATE recurring_reminders SET next_due_at = ? WHERE id = ?')
-        .run(computeNextDue(r), r.id);
-    } catch (err) {
-      console.error(`Recurring reminder ${r.id}: reschedule failed, deactivating:`, err.message);
+    if (r.freq === 'once') {
       db.prepare('UPDATE recurring_reminders SET active = 0 WHERE id = ?').run(r.id);
+    } else {
+      try {
+        db.prepare('UPDATE recurring_reminders SET next_due_at = ? WHERE id = ?')
+          .run(computeNextDue(r), r.id);
+      } catch (err) {
+        console.error(`Recurring reminder ${r.id}: reschedule failed, deactivating:`, err.message);
+        db.prepare('UPDATE recurring_reminders SET active = 0 WHERE id = ?').run(r.id);
+      }
     }
 
     const text = `⏰ ${greeting()}! Reminder: ${r.message}`;
