@@ -128,11 +128,28 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   }
 });
 
+// Markdown and emoji make the voice narrate junk ("asterisk asterisk...") —
+// reduce a reply to plain speakable text before it goes to the TTS service.
+function speechText(text) {
+  return String(text)
+    .replace(/```[\s\S]*?```/g, ' ') // code blocks
+    .replace(/`([^`]*)`/g, '$1') // inline code
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // images
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // links → just their text
+    .replace(/^#{1,6}\s+/gm, '') // heading marks
+    .replace(/^\s*[-*•>]\s+/gm, '') // bullet/quote marks
+    .replace(/[*_~#|]+/g, ' ') // bold/italic/strikethrough/table leftovers
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, ' ') // emoji, arrows & symbols
+    .replace(/(^|\s)[-—=]{2,}(?=\s|$)/g, ' ') // table dividers / horizontal rules
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Speak a chat reply aloud via Fish Audio TTS. Returns MP3 bytes.
 app.post('/api/tts', requireAuth, async (req, res) => {
   const { key, model, voice } = resolveTtsConfig();
   if (!key) return res.status(400).json({ error: 'Voice is not set up yet — the administrator can add a Fish Audio key in the Admin tab.' });
-  const text = String(req.body.text || '').trim().slice(0, 3000);
+  const text = speechText(req.body.text || '').slice(0, 3000);
   if (!text) return res.status(400).json({ error: 'Nothing to speak.' });
   try {
     const upstream = await fetch('https://api.fish.audio/v1/tts', {
