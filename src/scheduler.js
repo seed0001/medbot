@@ -1,5 +1,6 @@
 const db = require('./db');
 const { sendMail, mailEnabled } = require('./mailer');
+const { fireDueRecurring } = require('./recurring');
 
 const CHECK_INTERVAL_MS = 60 * 1000;
 
@@ -67,12 +68,18 @@ async function sendDueReminders() {
   }
 }
 
+function tick() {
+  sendDueReminders().catch((e) => console.error('Reminder check failed:', e));
+  // Recurring reminders post to chat, so they run even without SMTP.
+  fireDueRecurring().catch((e) => console.error('Recurring reminder check failed:', e));
+}
+
 function start() {
   if (!mailEnabled()) {
     console.warn('SMTP not configured — reminder emails are disabled.');
   }
-  setInterval(() => sendDueReminders().catch((e) => console.error('Reminder check failed:', e)), CHECK_INTERVAL_MS);
-  sendDueReminders().catch((e) => console.error('Reminder check failed:', e));
+  setInterval(tick, CHECK_INTERVAL_MS);
+  tick();
 }
 
 module.exports = { start };

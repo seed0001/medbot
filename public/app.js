@@ -45,7 +45,7 @@ function show(view) {
   $('app-view').classList.toggle('hidden', view === 'auth');
 }
 
-const loaders = { log: loadLog, charts: loadCharts, appts: loadAppointments, files: loadFiles, memory: loadMemory, admin: loadAdmin };
+const loaders = { reminders: loadReminders, log: loadLog, charts: loadCharts, appts: loadAppointments, files: loadFiles, memory: loadMemory, admin: loadAdmin };
 
 function showTab(tab) {
   document.querySelectorAll('main[data-panel]').forEach((m) => m.classList.toggle('hidden', m.dataset.panel !== tab));
@@ -190,11 +190,10 @@ $('chat-form').addEventListener('submit', async (e) => {
   const sendBtn = $('send-btn');
   sendBtn.disabled = true;
   try {
-    const { reply } = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text }) });
+    const { reply, reply_id } = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text }) });
     pending.textContent = reply;
-    attachSpeaker(pending);
-    // Voice is on: speak every new reply automatically (button still works to stop/replay).
-    pending.querySelector('.speak-btn')?.click();
+    if (reply_id) lastMsgId = Math.max(lastMsgId, reply_id);
+    speakNow(pending);
   } catch (err) {
     pending.textContent = '⚠️ ' + err.message;
   }
@@ -303,11 +302,39 @@ $('chat-form').addEventListener('submit', async (e) => {
   };
 })();
 
+// Voice is on: speak a reply automatically (the button still stops/replays).
+function speakNow(div) {
+  attachSpeaker(div);
+  div.querySelector('.speak-btn')?.click();
+}
+
+let lastMsgId = 0;
+
 async function loadMessages() {
   const { messages } = await api('/api/messages');
   $('messages').innerHTML = '';
   messages.forEach((m) => addMsg(m.role, m.content));
+  lastMsgId = messages.length ? messages[messages.length - 1].id : 0;
 }
+
+// The assistant can reach out on its own (recurring reminders): poll for
+// messages we haven't shown, append them to chat, and speak them aloud.
+async function pollNewMessages() {
+  if ($('app-view').classList.contains('hidden')) return;
+  try {
+    const { messages } = await api(`/api/messages?after=${lastMsgId}`);
+    for (const m of messages) {
+      lastMsgId = Math.max(lastMsgId, m.id);
+      const div = addMsg(m.role, m.content);
+      if (m.role === 'assistant') speakNow(div);
+    }
+  } catch { /* offline or signed out — try again next tick */ }
+}
+
+setInterval(pollNewMessages, 20000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pollNewMessages();
+});
 
 // ---- Log tab ----
 async function loadLog() {
@@ -447,6 +474,63 @@ $('clear-chat-btn').addEventListener('click', async () => {
   btn.disabled = false;
   btn.textContent = '🧹 Clear chat';
 });
+
+// ---- Scan a medicine bottle (photo → vision model → medication list) ----
+$('scan-btn').addEventListener('click', () => $('scan-input').click());
+
+// Shrink the photo before upload: labels stay readable at 1280px and the
+// upload goes from ~8 MB to a few hundred KB.
+async function downscalePhoto(file, maxDim = 1280, quality = 0.85) {
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+$('scan-input').addEventListener('change', async () => {
+  const file = $('scan-input').files[0];
+  $('scan-input').value = '';
+  if (!file) return;
+  const btn = $('scan-btn');
+  btn.disabled = true;
+  addMsg('user', '📷 Scanned a medicine bottle');
+  const pending = addMsg('assistant', 'Reading the label…', true);
+  try {
+    const image = await downscalePhoto(file);
+    const { reply, reply_id } = await api('/api/scan-medication', { method: 'POST', body: JSON.stringify({ image }) });
+    pending.textContent = reply;
+    if (reply_id) lastMsgId = Math.max(lastMsgId, reply_id);
+    speakNow(pending);
+  } catch (err) {
+    pending.textContent = '⚠️ ' + err.message;
+  }
+  pending.classList.remove('pending');
+  btn.disabled = false;
+});
+
+// ---- Reminders tab ----
+async function loadReminders() {
+  const { reminders } = await api('/api/recurring');
+  fillTable('reminders-table', reminders, (r) => {
+    const del = document.createElement('button');
+    del.textContent = 'Delete';
+    del.className = 'small danger';
+    del.addEventListener('click', async () => {
+      if (!confirm(`Delete this reminder?\n\n"${r.message}" (${r.schedule})`)) return;
+      await api(`/api/recurring/${r.id}`, { method: 'DELETE' });
+      loadReminders();
+    });
+    return [
+      { text: r.message, cls: 'note' },
+      r.schedule,
+      fmtTime(r.next_due_at),
+      { node: del },
+    ];
+  });
+}
 
 // ---- Memory tab ----
 function memoryRow(tableId) {

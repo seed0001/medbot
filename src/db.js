@@ -91,6 +91,21 @@ CREATE TABLE IF NOT EXISTS reminders (
   canceled       INTEGER NOT NULL DEFAULT 0
 );
 
+-- Recurring reminders the assistant creates from natural language. When one
+-- fires, the assistant posts (and speaks) a chat message; email is a backup.
+CREATE TABLE IF NOT EXISTS recurring_reminders (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id          INTEGER NOT NULL REFERENCES users(id),
+  message          TEXT NOT NULL,
+  freq             TEXT NOT NULL CHECK (freq IN ('daily','weekly','interval')),
+  time_local       TEXT,    -- "HH:MM" local wall-clock, for daily/weekly
+  weekdays         TEXT,    -- comma-separated 0-6 (0=Sunday), for weekly
+  interval_minutes INTEGER, -- for interval
+  next_due_at      TEXT NOT NULL, -- UTC ISO
+  active           INTEGER NOT NULL DEFAULT 1,
+  created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 -- Site-wide settings managed by the admin (openrouter_key, model, persona).
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
@@ -123,6 +138,7 @@ CREATE INDEX IF NOT EXISTS idx_meals_user ON meals(user_id, eaten_at);
 CREATE INDEX IF NOT EXISTS idx_appts_user ON appointments(user_id, appt_at);
 CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_at) WHERE sent_at IS NULL AND canceled = 0;
 CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id, id);
+CREATE INDEX IF NOT EXISTS idx_recurring_due ON recurring_reminders(next_due_at) WHERE active = 1;
 CREATE INDEX IF NOT EXISTS idx_memories_user ON memories(user_id, kind, id);
 `);
 
