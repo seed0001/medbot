@@ -108,7 +108,8 @@ thead th { background: var(--bg); position: sticky; top: 0; }
 .delta-up { color: var(--accent); font-weight: 600; }
 .delta-down { color: var(--green); font-weight: 600; }
 
-main[data-panel="log"], main[data-panel="appts"], main[data-panel="charts"], main[data-panel="files"] { overflow-y: auto; }
+/* every tab panel scrolls except chat, which manages its own message scroll */
+main[data-panel]:not([data-panel="chat"]) { overflow-y: auto; }
 section { margin-bottom: 22px; }
 .section-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
 section h2 { font-size: 16px; margin-bottom: 8px; }
