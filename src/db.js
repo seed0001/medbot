@@ -91,13 +91,14 @@ CREATE TABLE IF NOT EXISTS reminders (
   canceled       INTEGER NOT NULL DEFAULT 0
 );
 
--- Recurring reminders the assistant creates from natural language. When one
--- fires, the assistant posts (and speaks) a chat message; email is a backup.
+-- Reminders the assistant creates from natural language: one-time ('once')
+-- or recurring. When one fires, the assistant posts (and speaks) a chat
+-- message; email is a backup. 'once' rows deactivate after firing.
 CREATE TABLE IF NOT EXISTS recurring_reminders (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id          INTEGER NOT NULL REFERENCES users(id),
   message          TEXT NOT NULL,
-  freq             TEXT NOT NULL CHECK (freq IN ('daily','weekly','interval')),
+  freq             TEXT NOT NULL CHECK (freq IN ('once','daily','weekly','interval')),
   time_local       TEXT,    -- "HH:MM" local wall-clock, for daily/weekly
   weekdays         TEXT,    -- comma-separated 0-6 (0=Sunday), for weekly
   interval_minutes INTEGER, -- for interval
@@ -147,6 +148,30 @@ for (const col of ["type TEXT NOT NULL DEFAULT 'glucose'", 'message TEXT', 'appo
   try { db.exec(`ALTER TABLE reminders ADD COLUMN ${col}`); } catch { /* already exists */ }
 }
 try { db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0'); } catch { /* already exists */ }
+
+// Databases created before one-time reminders have a CHECK constraint without
+// 'once'; SQLite can't alter CHECKs, so rebuild the table once.
+const rrSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'recurring_reminders'").get()?.sql || '';
+if (!rrSql.includes("'once'")) {
+  db.exec(`
+    ALTER TABLE recurring_reminders RENAME TO recurring_reminders_old;
+    CREATE TABLE recurring_reminders (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id          INTEGER NOT NULL REFERENCES users(id),
+      message          TEXT NOT NULL,
+      freq             TEXT NOT NULL CHECK (freq IN ('once','daily','weekly','interval')),
+      time_local       TEXT,
+      weekdays         TEXT,
+      interval_minutes INTEGER,
+      next_due_at      TEXT NOT NULL,
+      active           INTEGER NOT NULL DEFAULT 1,
+      created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    INSERT INTO recurring_reminders SELECT * FROM recurring_reminders_old;
+    DROP TABLE recurring_reminders_old;
+    CREATE INDEX IF NOT EXISTS idx_recurring_due ON recurring_reminders(next_due_at) WHERE active = 1;
+  `);
+}
 db.exec('DROP TABLE IF EXISTS user_settings');
 
 // The administrator is the account matching ADMIN_EMAIL (nobody else can gain
