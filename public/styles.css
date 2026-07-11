@@ -19,7 +19,8 @@ body {
 }
 
 .hidden { display: none !important; }
-.view { height: 100vh; display: flex; flex-direction: column; }
+/* dvh keeps the composer above the phone browser's collapsing address bar */
+.view { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
 
 /* ---- Auth ---- */
 #auth-view { align-items: center; justify-content: center; }
@@ -71,26 +72,37 @@ header {
   border-bottom: 1px solid var(--border);
 }
 .brand { font-weight: 700; font-size: 17px; }
-nav { display: flex; gap: 6px; }
-.tab { border: none; background: transparent; padding: 8px 12px; border-radius: 8px; color: var(--muted); }
+nav { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tab { border: none; background: transparent; padding: 8px 12px; border-radius: 8px; color: var(--muted); font-size: 15px; white-space: nowrap; }
 .tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 #user-email { color: var(--muted); font-size: 13px; }
 
 /* ---- Chat ---- */
 main { flex: 1; display: flex; flex-direction: column; overflow: hidden; max-width: 860px; width: 100%; margin: 0 auto; padding: 16px; }
-#messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
-.msg { max-width: 78%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; line-height: 1.45; font-size: 15px; }
+#messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 12px; }
+.msg { max-width: 85%; padding: 12px 16px; border-radius: 16px; white-space: pre-wrap; line-height: 1.5; font-size: 18px; }
 .msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
 .msg.assistant { align-self: flex-start; background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
 .msg.pending { color: var(--muted); font-style: italic; }
 
-#chat-form { display: flex; gap: 8px; }
-#chat-input { flex: 1; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; }
-#mic-btn { font-size: 18px; padding: 8px 14px; }
+#chat-form { display: flex; flex-direction: column; gap: 10px; }
+#chat-input {
+  width: 100%; padding: 14px 16px; border: 2px solid var(--border); border-radius: 12px;
+  font-size: 19px; line-height: 1.4; font-family: inherit; resize: none; overflow-y: auto;
+  min-height: 62px; max-height: 32vh; background: var(--card);
+}
+#chat-input:focus { outline: none; border-color: var(--accent); }
+.chat-actions { display: flex; gap: 10px; }
+.chat-actions button {
+  flex: 1; min-height: 64px; font-size: 22px; font-weight: 600;
+  border-radius: 14px; border-width: 2px;
+}
+#send-btn:disabled { opacity: 0.5; }
 .speak-btn {
-  display: block; margin-top: 6px; padding: 2px 8px; font-size: 13px;
-  border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+  display: block; margin-top: 8px; padding: 6px 14px; font-size: 16px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+  min-height: 40px; min-width: 56px;
 }
 .speak-btn.playing { background: var(--accent-soft); border-color: var(--accent); }
 #mic-btn.listening { background: var(--accent); border-color: var(--accent); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
@@ -168,3 +180,27 @@ button.primary-outline, .btn.primary-outline { border-color: var(--accent); colo
 .error { color: var(--accent); min-height: 20px; margin-top: 8px; font-size: 14px; }
 .disclaimer { color: var(--muted); font-size: 12px; margin-top: 16px; line-height: 1.4; }
 footer.disclaimer { text-align: center; padding: 8px 16px; margin: 0; border-top: 1px solid var(--border); background: var(--card); }
+
+/* ---- Phone layout: everything bigger and touch-friendly ---- */
+@media (max-width: 700px) {
+  header { flex-wrap: wrap; gap: 8px; padding: 10px 12px; row-gap: 6px; }
+  .brand { font-size: 18px; }
+  nav { order: 3; width: 100%; }
+  .tab { padding: 12px 16px; font-size: 17px; }
+  .header-right { gap: 8px; }
+  #user-email { display: none; }
+  button.small { padding: 9px 14px; font-size: 15px; min-height: 42px; }
+
+  main { padding: 12px 10px; }
+  .msg { max-width: 92%; font-size: 20px; line-height: 1.5; }
+  #chat-input { font-size: 20px; min-height: 76px; }
+  .chat-actions button { min-height: 76px; font-size: 25px; }
+  .speak-btn { font-size: 18px; min-height: 46px; padding: 8px 18px; }
+  .chat-toolbar { margin-bottom: 8px; }
+
+  button, .btn { min-height: 48px; font-size: 16px; }
+  table { font-size: 15px; }
+  th, td { padding: 12px 12px; }
+  .hint { font-size: 14px; }
+  footer.disclaimer { font-size: 11px; padding: 6px 12px; }
+}

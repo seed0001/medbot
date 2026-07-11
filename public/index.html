@@ -58,9 +58,11 @@
     </div>
     <div id="messages"></div>
     <form id="chat-form">
-      <input type="text" id="chat-input" placeholder='e.g. "Blood sugar 182, took 4 units" or "Took my metformin" or "Dr. Smith next Tuesday at 2pm"' autocomplete="off" maxlength="4000">
-      <button type="button" id="mic-btn" title="Speak instead of typing">🎤</button>
-      <button type="submit" class="primary">Send</button>
+      <textarea id="chat-input" placeholder="Press Talk and say what you want — your words show up here." rows="2" maxlength="4000" autocomplete="off"></textarea>
+      <div class="chat-actions">
+        <button type="button" id="mic-btn" title="Press and talk">🎤 Talk</button>
+        <button type="submit" id="send-btn" class="primary">Send ➤</button>
+      </div>
     </form>
   </main>
 
