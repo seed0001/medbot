@@ -298,7 +298,7 @@ $('chat-form').addEventListener('submit', async (e) => {
     wantListening = false;
     setListening(false);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      addMsg('assistant', '⚠️ I couldn\'t use the microphone — your browser blocked it. Click the padlock/mic icon in the address bar and allow microphone access, then try again.');
+      addMsg('assistant', '⚠️ I couldn\'t use the microphone — access is blocked. Allow microphone access for this app (browser: the padlock icon by the address bar; Amy app: Settings → Apps → Amy → Permissions), then try again.');
     }
   };
 })();
@@ -570,6 +570,16 @@ async function enterApp() {
     addMsg('assistant', "⚠️ Heads up: email isn't configured on the server yet, so reminder emails and emailed reports won't send until SMTP settings are added.");
   }
 }
+
+// Show "Get the Android app" links once an APK has been published — but not
+// when we're already running inside that app.
+(async () => {
+  if (window.Capacitor?.isNativePlatform?.()) return;
+  try {
+    const res = await fetch('/app/amy.apk', { method: 'HEAD' });
+    if (res.ok) document.querySelectorAll('.get-app').forEach((el) => el.classList.remove('hidden'));
+  } catch { /* offline — leave hidden */ }
+})();
 
 (async () => {
   try {
