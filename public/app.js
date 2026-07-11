@@ -162,15 +162,32 @@ function attachSpeaker(div) {
   div.appendChild(btn);
 }
 
+// The transcript box grows as words appear so nothing scrolls out of sight.
+function resizeInput() {
+  const input = $('chat-input');
+  input.style.height = 'auto';
+  input.style.height = input.scrollHeight + 'px';
+}
+$('chat-input').addEventListener('input', resizeInput);
+
+// Enter sends (Shift+Enter for a new line) — handy when a keyboard is used.
+$('chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    $('chat-form').requestSubmit();
+  }
+});
+
 $('chat-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const input = $('chat-input');
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
+  resizeInput();
   addMsg('user', text);
   const pending = addMsg('assistant', 'Thinking…', true);
-  const sendBtn = e.target.querySelector('button');
+  const sendBtn = $('send-btn');
   sendBtn.disabled = true;
   try {
     const { reply } = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text }) });
@@ -183,7 +200,8 @@ $('chat-form').addEventListener('submit', async (e) => {
   }
   pending.classList.remove('pending');
   sendBtn.disabled = false;
-  input.focus();
+  // Refocusing on a phone pops the keyboard up over the reply — desktop only.
+  if (window.matchMedia('(hover: hover)').matches) input.focus();
 });
 
 // ---- Voice input (browser speech recognition; button hides if unsupported) ----
@@ -210,9 +228,18 @@ $('chat-form').addEventListener('submit', async (e) => {
 
   const setListening = (on) => {
     micBtn.classList.toggle('listening', on);
-    micBtn.textContent = on ? '⏹' : '🎤';
-    micBtn.title = on ? 'Stop listening' : 'Speak instead of typing';
+    micBtn.textContent = on ? '⏹ Stop' : '🎤 Talk';
+    micBtn.title = on ? 'Stop listening' : 'Press and talk';
   };
+
+  // Sending while the mic is on stops it, discarding any half-heard words so
+  // they don't reappear in the box after it's cleared.
+  $('chat-form').addEventListener('submit', () => {
+    if (!wantListening) return;
+    wantListening = false;
+    rec.abort();
+    setListening(false);
+  });
 
   micBtn.addEventListener('click', () => {
     if (wantListening) {
@@ -240,6 +267,7 @@ $('chat-form').addEventListener('submit', async (e) => {
     }
     sessionFinals = finals;
     $('chat-input').value = joined(baseText, priorFinals, sessionFinals, interim);
+    resizeInput();
   };
 
   rec.onend = () => {
@@ -251,7 +279,7 @@ $('chat-form').addEventListener('submit', async (e) => {
       return;
     }
     setListening(false);
-    $('chat-input').focus();
+    if (window.matchMedia('(hover: hover)').matches) $('chat-input').focus();
   };
 
   rec.onerror = (e) => {
