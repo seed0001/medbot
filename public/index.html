@@ -34,6 +34,7 @@
       <button class="tab" data-tab="charts">Charts</button>
       <button class="tab" data-tab="appts">Appointments</button>
       <button class="tab" data-tab="files">Files</button>
+      <button class="tab" data-tab="memory">Memory</button>
       <button class="tab hidden" data-tab="admin" id="admin-tab">Admin</button>
     </nav>
     <div class="header-right">
@@ -51,6 +52,10 @@
   </form>
 
   <main id="chat-panel" data-panel="chat">
+    <div class="chat-toolbar">
+      <span class="spacer"></span>
+      <button id="clear-chat-btn" class="small" title="Clear this conversation (important details are saved to Memory first)">🧹 Clear chat</button>
+    </div>
     <div id="messages"></div>
     <form id="chat-form">
       <input type="text" id="chat-input" placeholder='e.g. "Blood sugar 182, took 4 units" or "Took my metformin" or "Dr. Smith next Tuesday at 2pm"' autocomplete="off" maxlength="4000">
@@ -147,6 +152,29 @@
     <div class="table-wrap"><table id="files-table">
       <thead><tr><th>File</th><th>Size</th><th>Modified</th><th></th></tr></thead>
       <tbody></tbody></table></div>
+  </main>
+
+  <main data-panel="memory" class="hidden">
+    <section>
+      <h2>Facts the assistant remembers</h2>
+      <p class="hint">Long-term memory: lasting facts the assistant has saved about you (allergies, doctors, preferences). It uses these in every conversation. Delete anything wrong or private, or add a fact yourself.</p>
+      <form id="memory-add" class="memory-add">
+        <input type="text" id="memory-content" placeholder='e.g. "Allergic to penicillin" or "Cardiologist is Dr. Lee"' maxlength="1000">
+        <button type="submit" class="primary">Remember this</button>
+      </form>
+      <p id="memory-notice"></p>
+      <div class="table-wrap"><table id="memory-facts">
+        <thead><tr><th>Fact</th><th>Saved</th><th></th></tr></thead>
+        <tbody></tbody></table></div>
+    </section>
+
+    <section>
+      <h2>Conversation summaries</h2>
+      <p class="hint">Episodic memory: when old messages age out of the chat (or you clear it), the assistant writes a short summary so it can still recall what happened. Delete any you don't want kept.</p>
+      <div class="table-wrap"><table id="memory-episodes">
+        <thead><tr><th>Summary</th><th>Date</th><th></th></tr></thead>
+        <tbody></tbody></table></div>
+    </section>
   </main>
 
   <main data-panel="admin" class="hidden">

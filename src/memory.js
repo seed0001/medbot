@@ -26,6 +26,14 @@ function forgetMemory(userId, id) {
   return { forgot: row.content };
 }
 
+// User-initiated delete from the Memory tab — works on either kind.
+function deleteAnyMemory(userId, id) {
+  const row = db.prepare('SELECT id, kind, content FROM memories WHERE user_id = ? AND id = ?').get(userId, id);
+  if (!row) throw new Error('Memory not found.');
+  db.prepare('DELETE FROM memories WHERE id = ?').run(row.id);
+  return { deleted: row.content, kind: row.kind };
+}
+
 function listMemories(userId, kind, limit = 50) {
   return db.prepare(
     'SELECT id, content, created_at FROM memories WHERE user_id = ? AND kind = ? ORDER BY id DESC LIMIT ?'
@@ -58,16 +66,17 @@ function memoryContext(userId) {
 // Summarize messages that have aged out of the short-term window into an
 // episodic memory. Runs after a chat turn; needs the LLM, so the caller passes
 // a `complete(messages) -> text` function.
-async function summarizeEpisodeIfNeeded(userId, complete) {
+async function summarizeEpisodeIfNeeded(userId, complete, force = false) {
   const watermark = db.prepare(
     "SELECT COALESCE(MAX(last_message_id), 0) w FROM memories WHERE user_id = ? AND kind = 'episodic'"
   ).get(userId).w;
   const unsummarized = db.prepare(
     'SELECT id, role, content FROM messages WHERE user_id = ? AND id > ? ORDER BY id'
   ).all(userId, watermark);
-  if (unsummarized.length < EPISODE_TRIGGER) return null;
+  // force = summarize everything now (used before clearing the chat)
+  if (unsummarized.length < (force ? 4 : EPISODE_TRIGGER)) return null;
 
-  const chunk = unsummarized.slice(0, unsummarized.length - EPISODE_KEEP_RECENT);
+  const chunk = force ? unsummarized : unsummarized.slice(0, unsummarized.length - EPISODE_KEEP_RECENT);
   const transcript = chunk.map((m) => `${m.role}: ${m.content}`).join('\n').slice(0, 24000);
   const summary = (await complete([
     {
@@ -84,4 +93,4 @@ async function summarizeEpisodeIfNeeded(userId, complete) {
   return summary;
 }
 
-module.exports = { saveMemory, forgetMemory, listMemories, searchMemories, memoryContext, summarizeEpisodeIfNeeded };
+module.exports = { saveMemory, forgetMemory, deleteAnyMemory, listMemories, searchMemories, memoryContext, summarizeEpisodeIfNeeded };

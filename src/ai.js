@@ -372,4 +372,21 @@ async function chat(userId, userText) {
   return text;
 }
 
-module.exports = { chat };
+// Clear the conversation. If the LLM is configured, first roll the whole
+// unsummarized stretch into an episodic memory so nothing important is lost.
+async function clearChat(userId) {
+  let summarized = false;
+  const { key, model } = resolveApiConfig();
+  if (key) {
+    try {
+      const complete = async (msgs) => (await callOpenRouter(msgs, key, model, false)).content || '';
+      summarized = Boolean(await summarizeEpisodeIfNeeded(userId, complete, true));
+    } catch (err) {
+      console.error('Pre-clear summarization failed (clearing anyway):', err.message);
+    }
+  }
+  const info = db.prepare('DELETE FROM messages WHERE user_id = ?').run(userId);
+  return { cleared: info.changes, summarized };
+}
+
+module.exports = { chat, clearChat };

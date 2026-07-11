@@ -142,6 +142,12 @@ button.primary-outline, .btn.primary-outline { border-color: var(--accent); colo
   max-width: 240px; white-space: normal; z-index: 5;
 }
 
+/* ---- Chat toolbar & memory ---- */
+.chat-toolbar { display: flex; margin-bottom: 6px; }
+.memory-add { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.memory-add input { flex: 1; min-width: 240px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+#memory-notice { color: var(--accent); font-size: 13px; min-height: 18px; }
+
 /* ---- Password form ---- */
 .pw-form {
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;

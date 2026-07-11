@@ -4,7 +4,8 @@ const cookieParser = require('cookie-parser');
 
 const db = require('./db');
 const { register, login, destroySession, requireAuth, changePassword, adminSetPassword } = require('./auth');
-const { chat } = require('./ai');
+const { chat, clearChat } = require('./ai');
+const { saveMemory, deleteAnyMemory, listMemories } = require('./memory');
 const { getLog, pendingReminder, stopReminders } = require('./readings');
 const { listMedications, medEvents } = require('./meds');
 const { listMeals } = require('./meals');
@@ -162,6 +163,38 @@ app.get('/api/messages', requireAuth, (req, res) => {
     'SELECT role, content, created_at FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT 100'
   ).all(req.user.id).reverse();
   res.json({ messages: rows });
+});
+
+app.post('/api/clear-chat', requireAuth, async (req, res) => {
+  try {
+    res.json(await clearChat(req.user.id));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Memory (view + manage what the assistant remembers) ---
+app.get('/api/memories', requireAuth, (req, res) => {
+  res.json({
+    long_term: listMemories(req.user.id, 'long_term', 200),
+    episodic: listMemories(req.user.id, 'episodic', 200),
+  });
+});
+
+app.post('/api/memories', requireAuth, (req, res) => {
+  try {
+    res.json(saveMemory(req.user.id, req.body.content));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/memories/:id', requireAuth, (req, res) => {
+  try {
+    res.json(deleteAnyMemory(req.user.id, Number(req.params.id)));
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
 });
 
 // --- Health data (read APIs for the UI) ---

@@ -45,7 +45,7 @@ function show(view) {
   $('app-view').classList.toggle('hidden', view === 'auth');
 }
 
-const loaders = { log: loadLog, charts: loadCharts, appts: loadAppointments, files: loadFiles, admin: loadAdmin };
+const loaders = { log: loadLog, charts: loadCharts, appts: loadAppointments, files: loadFiles, memory: loadMemory, admin: loadAdmin };
 
 function showTab(tab) {
   document.querySelectorAll('main[data-panel]').forEach((m) => m.classList.toggle('hidden', m.dataset.panel !== tab));
@@ -365,6 +365,61 @@ async function loadFiles() {
     ];
   });
 }
+
+// ---- Clear chat ----
+$('clear-chat-btn').addEventListener('click', async () => {
+  if (!confirm('Clear this conversation? Important details get saved to Memory first.')) return;
+  const btn = $('clear-chat-btn');
+  btn.disabled = true;
+  btn.textContent = 'Clearing…';
+  try {
+    await api('/api/clear-chat', { method: 'POST' });
+    await loadMessages();
+  } catch (err) {
+    alert('⚠️ ' + err.message);
+  }
+  btn.disabled = false;
+  btn.textContent = '🧹 Clear chat';
+});
+
+// ---- Memory tab ----
+function memoryRow(tableId) {
+  return (m) => {
+    const del = document.createElement('button');
+    del.textContent = 'Forget';
+    del.className = 'small danger';
+    del.addEventListener('click', async () => {
+      if (!confirm('Forget this permanently?\n\n' + m.content.slice(0, 200))) return;
+      await api(`/api/memories/${m.id}`, { method: 'DELETE' });
+      loadMemory();
+    });
+    return [
+      { text: m.content, cls: 'note' },
+      new Date(m.created_at).toLocaleDateString(),
+      { node: del },
+    ];
+  };
+}
+
+async function loadMemory() {
+  const { long_term, episodic } = await api('/api/memories');
+  fillTable('memory-facts', long_term, memoryRow('memory-facts'));
+  fillTable('memory-episodes', episodic, memoryRow('memory-episodes'));
+}
+
+$('memory-add').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const content = $('memory-content').value.trim();
+  if (!content) return;
+  $('memory-notice').textContent = '';
+  try {
+    await api('/api/memories', { method: 'POST', body: JSON.stringify({ content }) });
+    $('memory-content').value = '';
+    loadMemory();
+  } catch (err) {
+    $('memory-notice').textContent = '⚠️ ' + err.message;
+  }
+});
 
 // ---- Admin tab ----
 async function loadAdmin() {
