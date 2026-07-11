@@ -1,0 +1,20 @@
+{
+  "name": "medbot",
+  "version": "1.0.0",
+  "description": "AI assistant for logging blood sugar and insulin, with 2-hour follow-up reminders",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "nodemailer": "^6.9.14"
+  }
+}
