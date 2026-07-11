@@ -214,7 +214,9 @@ $('chat-form').addEventListener('submit', async (e) => {
   }
   const rec = new SR();
   rec.lang = navigator.language || 'en-US';
-  rec.continuous = true;
+  // Android Chrome's continuous mode re-delivers the same finalized phrase many
+  // times over; one-utterance sessions plus our onend auto-restart behave there.
+  rec.continuous = !/android/i.test(navigator.userAgent);
   rec.interimResults = true;
 
   // True push-to-talk toggle: listening continues (auto-restarting through the
@@ -223,6 +225,7 @@ $('chat-form').addEventListener('submit', async (e) => {
   let baseText = ''; // whatever was typed before the mic went on
   let priorFinals = ''; // finalized speech from earlier auto-restarted sessions
   let sessionFinals = ''; // finalized speech in the current session
+  let lastFinal = ''; // last accepted phrase, so re-sent duplicates get dropped
 
   const joined = (...parts) => parts.map((s) => s.trim()).filter(Boolean).join(' ');
 
@@ -251,6 +254,7 @@ $('chat-form').addEventListener('submit', async (e) => {
     baseText = $('chat-input').value;
     priorFinals = '';
     sessionFinals = '';
+    lastFinal = '';
     wantListening = true;
     try {
       rec.start();
@@ -259,13 +263,20 @@ $('chat-form').addEventListener('submit', async (e) => {
   });
 
   rec.onresult = (e) => {
-    let finals = '';
+    // Only look at results that are new in this event — older entries have
+    // already been captured, and some phones keep re-sending them as "new".
     let interim = '';
-    for (const r of e.results) {
-      if (r.isFinal) finals += r[0].transcript + ' ';
-      else interim += r[0].transcript + ' ';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      const t = r[0].transcript.trim();
+      if (!t) continue;
+      if (!r.isFinal) {
+        interim = joined(interim, t);
+      } else if (t.toLowerCase() !== lastFinal.toLowerCase()) {
+        sessionFinals = joined(sessionFinals, t);
+        lastFinal = t;
+      }
     }
-    sessionFinals = finals;
     $('chat-input').value = joined(baseText, priorFinals, sessionFinals, interim);
     resizeInput();
   };
