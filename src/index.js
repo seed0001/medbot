@@ -3,7 +3,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 
 const db = require('./db');
-const { register, login, destroySession, requireAuth } = require('./auth');
+const { register, login, destroySession, requireAuth, changePassword, adminSetPassword } = require('./auth');
 const { chat } = require('./ai');
 const { getLog, pendingReminder, stopReminders } = require('./readings');
 const { listMedications, medEvents } = require('./meds');
@@ -68,6 +68,14 @@ app.get('/api/me', requireAuth, (req, res) => {
   });
 });
 
+app.post('/api/change-password', requireAuth, (req, res) => {
+  try {
+    res.json(changePassword(req.user.id, req.body.current_password, req.body.new_password, req.cookies.session));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // --- Admin (site-wide settings + user overview) ---
 function requireAdmin(req, res, next) {
   if (!req.user.is_admin) return res.status(403).json({ error: 'Administrator only.' });
@@ -81,6 +89,14 @@ app.get('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
 app.post('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
   try {
     res.json(saveAppSettings(req.body || {}));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/users/:id/password', requireAuth, requireAdmin, (req, res) => {
+  try {
+    res.json(adminSetPassword(Number(req.params.id), req.body.password));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

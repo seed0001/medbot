@@ -38,9 +38,17 @@
     </nav>
     <div class="header-right">
       <span id="user-email"></span>
+      <button id="pw-btn" class="small">Password</button>
       <button id="logout-btn" class="small">Sign out</button>
     </div>
   </header>
+
+  <form id="pw-form" class="pw-form hidden">
+    <input type="password" id="pw-current" placeholder="Current password" autocomplete="current-password" required>
+    <input type="password" id="pw-new" placeholder="New password (8+ characters)" autocomplete="new-password" required minlength="8">
+    <button type="submit" class="primary small">Change password</button>
+    <span id="pw-notice"></span>
+  </form>
 
   <main id="chat-panel" data-panel="chat">
     <div id="messages"></div>
@@ -173,8 +181,9 @@
     <section>
       <h2>Accounts</h2>
       <div class="table-wrap"><table id="admin-users">
-        <thead><tr><th>Email</th><th>Role</th><th>Joined</th><th>Readings</th><th>Messages</th></tr></thead>
+        <thead><tr><th>Email</th><th>Role</th><th>Joined</th><th>Readings</th><th>Messages</th><th></th></tr></thead>
         <tbody></tbody></table></div>
+      <p class="hint">Resetting a password signs that person out everywhere; tell them the temporary password and have them change it with the Password button.</p>
     </section>
   </main>
 

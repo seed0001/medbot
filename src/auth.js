@@ -37,6 +37,31 @@ function destroySession(token) {
   if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
 }
 
+// Self-service password change; keeps the current session, signs out others.
+function changePassword(userId, currentPassword, newPassword, keepToken) {
+  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+  if (!user || !bcrypt.compareSync(currentPassword || '', user.password_hash)) {
+    throw new Error('Current password is incorrect.');
+  }
+  setPassword(userId, newPassword);
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(userId, keepToken || '');
+  return { changed: true };
+}
+
+// Admin reset: sets a new password and signs the user out everywhere.
+function adminSetPassword(userId, newPassword) {
+  const user = db.prepare('SELECT id, email FROM users WHERE id = ?').get(userId);
+  if (!user) throw new Error('No such user.');
+  setPassword(userId, newPassword);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  return { reset: user.email };
+}
+
+function setPassword(userId, newPassword) {
+  if (!newPassword || newPassword.length < 8) throw new Error('Password must be at least 8 characters.');
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(newPassword, 10), userId);
+}
+
 // Express middleware: attaches req.user or sends 401.
 function requireAuth(req, res, next) {
   const token = req.cookies.session;
@@ -53,4 +78,4 @@ function requireAuth(req, res, next) {
   res.status(401).json({ error: 'Not signed in.' });
 }
 
-module.exports = { register, login, destroySession, requireAuth };
+module.exports = { register, login, destroySession, requireAuth, changePassword, adminSetPassword };

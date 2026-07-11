@@ -130,6 +130,14 @@ button.primary-outline, .btn.primary-outline { border-color: var(--accent); colo
   max-width: 240px; white-space: normal; z-index: 5;
 }
 
+/* ---- Password form ---- */
+.pw-form {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--border);
+}
+.pw-form input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+#pw-notice { font-size: 13px; }
+
 /* ---- Admin ---- */
 .admin-form { display: flex; flex-direction: column; gap: 16px; max-width: 620px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
 .admin-form label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }

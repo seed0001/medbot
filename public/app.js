@@ -80,6 +80,29 @@ $('logout-btn').addEventListener('click', async () => {
   show('auth');
 });
 
+// ---- Change own password ----
+$('pw-btn').addEventListener('click', () => {
+  $('pw-form').classList.toggle('hidden');
+  $('pw-notice').textContent = '';
+});
+
+$('pw-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('pw-notice').textContent = 'Saving…';
+  try {
+    await api('/api/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: $('pw-current').value, new_password: $('pw-new').value }),
+    });
+    $('pw-notice').textContent = '✅ Password changed.';
+    $('pw-current').value = '';
+    $('pw-new').value = '';
+    setTimeout(() => $('pw-form').classList.add('hidden'), 1500);
+  } catch (err) {
+    $('pw-notice').textContent = '⚠️ ' + err.message;
+  }
+});
+
 // ---- Chat ----
 function addMsg(role, text, pending = false) {
   const div = document.createElement('div');
@@ -258,13 +281,29 @@ async function loadAdmin() {
   $('admin-persona').value = s.persona;
 
   const { users } = await api('/api/admin/users');
-  fillTable('admin-users', users, (u) => [
-    u.email,
-    u.is_admin ? 'Admin' : 'Member',
-    new Date(u.created_at).toLocaleDateString(),
-    u.readings,
-    u.messages,
-  ]);
+  fillTable('admin-users', users, (u) => {
+    const btn = document.createElement('button');
+    btn.textContent = 'Reset password';
+    btn.className = 'small';
+    btn.addEventListener('click', async () => {
+      const pw = prompt(`New temporary password for ${u.email} (at least 8 characters):`);
+      if (pw == null) return;
+      try {
+        await api(`/api/admin/users/${u.id}/password`, { method: 'POST', body: JSON.stringify({ password: pw }) });
+        alert(`Password reset for ${u.email}. They are signed out everywhere — tell them the temporary password.`);
+      } catch (err) {
+        alert('⚠️ ' + err.message);
+      }
+    });
+    return [
+      u.email,
+      u.is_admin ? 'Admin' : 'Member',
+      new Date(u.created_at).toLocaleDateString(),
+      u.readings,
+      u.messages,
+      { node: btn },
+    ];
+  });
 }
 
 $('admin-form').addEventListener('submit', async (e) => {
