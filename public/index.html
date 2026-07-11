@@ -170,6 +170,14 @@
           </datalist>
           <span class="hint">Any OpenRouter model that supports tool calling. Default: <span id="admin-default-model"></span></span>
         </label>
+        <label>Fish Audio API key (voice replies)
+          <input type="password" id="admin-fish-key" placeholder="paste your Fish Audio key" autocomplete="off">
+          <span class="hint" id="admin-fish-status"></span>
+        </label>
+        <label>Voice (optional)
+          <input type="text" id="admin-tts-voice" placeholder="Fish Audio voice ID — leave blank for the default voice">
+          <span class="hint">Model: <span id="admin-tts-model"></span>. Browse voices at fish.audio and paste a voice's ID here to change how the assistant sounds.</span>
+        </label>
         <label>Assistant persona
           <textarea id="admin-persona" rows="5" placeholder="e.g. You are Rosie, a patient, cheerful assistant. Speak plainly and warmly, like a trusted friend. Keep answers short."></textarea>
           <span class="hint">Sets the assistant's personality and tone for everyone. Safety rules (no dosing advice, etc.) always stay in force.</span>

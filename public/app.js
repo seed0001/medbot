@@ -104,13 +104,62 @@ $('pw-form').addEventListener('submit', async (e) => {
 });
 
 // ---- Chat ----
+let ttsReady = false;
+let currentAudio = null;
+
 function addMsg(role, text, pending = false) {
   const div = document.createElement('div');
   div.className = `msg ${role}${pending ? ' pending' : ''}`;
   div.textContent = text;
   $('messages').appendChild(div);
+  if (role === 'assistant' && !pending) attachSpeaker(div);
   $('messages').scrollTop = $('messages').scrollHeight;
   return div;
+}
+
+// Adds a 🔊 button that reads the message aloud (Fish Audio TTS on the server).
+function attachSpeaker(div) {
+  if (!ttsReady || div.querySelector('.speak-btn')) return;
+  const btn = document.createElement('button');
+  btn.className = 'speak-btn';
+  btn.textContent = '🔊';
+  btn.title = 'Read this aloud';
+  btn.addEventListener('click', async () => {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+      document.querySelectorAll('.speak-btn.playing').forEach((b) => { b.classList.remove('playing'); b.textContent = '🔊'; });
+      if (btn.dataset.wasPlaying === '1') { btn.dataset.wasPlaying = ''; return; }
+    }
+    btn.textContent = '…';
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: div.firstChild.textContent }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Voice failed.');
+      const url = URL.createObjectURL(await res.blob());
+      currentAudio = new Audio(url);
+      btn.textContent = '⏹';
+      btn.classList.add('playing');
+      btn.dataset.wasPlaying = '1';
+      currentAudio.onended = () => {
+        btn.textContent = '🔊';
+        btn.classList.remove('playing');
+        btn.dataset.wasPlaying = '';
+        currentAudio = null;
+        URL.revokeObjectURL(url);
+      };
+      await currentAudio.play();
+    } catch (err) {
+      btn.textContent = '🔊';
+      btn.classList.remove('playing');
+      btn.dataset.wasPlaying = '';
+      alert('⚠️ ' + err.message);
+    }
+  });
+  div.appendChild(btn);
 }
 
 $('chat-form').addEventListener('submit', async (e) => {
@@ -126,6 +175,7 @@ $('chat-form').addEventListener('submit', async (e) => {
   try {
     const { reply } = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: text }) });
     pending.textContent = reply;
+    attachSpeaker(pending);
   } catch (err) {
     pending.textContent = '⚠️ ' + err.message;
   }
@@ -328,6 +378,12 @@ async function loadAdmin() {
   $('admin-model').value = s.model;
   $('admin-default-model').textContent = s.default_model;
   $('admin-persona').value = s.persona;
+  $('admin-fish-key').value = '';
+  $('admin-fish-status').textContent = s.fish_key_set
+    ? `Key saved (${s.fish_key_hint}). Enter a new key to replace it; leave blank to keep it.`
+    : 'No key yet — voice replies are off. Get a free key at fish.audio (Developers → API keys).';
+  $('admin-tts-model').textContent = s.tts_model;
+  $('admin-tts-voice').value = s.tts_voice;
 
   const { users } = await api('/api/admin/users');
   fillTable('admin-users', users, (u) => {
@@ -362,9 +418,11 @@ $('admin-form').addEventListener('submit', async (e) => {
     const body = {
       model: $('admin-model').value,
       persona: $('admin-persona').value,
+      tts_voice: $('admin-tts-voice').value,
     };
-    // Only send the key if a new one was typed, so leaving it blank keeps the saved key.
+    // Only send keys if a new one was typed, so leaving them blank keeps the saved keys.
     if ($('admin-key').value.trim()) body.openrouter_key = $('admin-key').value.trim();
+    if ($('admin-fish-key').value.trim()) body.fish_audio_key = $('admin-fish-key').value.trim();
     await api('/api/admin/settings', { method: 'POST', body: JSON.stringify(body) });
     $('admin-notice').textContent = '✅ Saved.';
     loadAdmin();
@@ -377,6 +435,7 @@ $('admin-form').addEventListener('submit', async (e) => {
 async function enterApp() {
   const me = await api('/api/me');
   $('user-email').textContent = me.email;
+  ttsReady = me.ttsReady;
   $('admin-tab').classList.toggle('hidden', !me.isAdmin);
   show('app');
   showTab('chat');

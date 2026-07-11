@@ -11,7 +11,7 @@ const { listMeals } = require('./meals');
 const { listAppointments } = require('./appointments');
 const { listUserFiles, userFilePath, deleteUserFile } = require('./filesStore');
 const { collectData, buildReportHtml, emailReport, csvOf } = require('./report');
-const { publicAppSettings, saveAppSettings, resolveApiConfig } = require('./settings');
+const { publicAppSettings, saveAppSettings, resolveApiConfig, resolveTtsConfig } = require('./settings');
 const { mailEnabled } = require('./mailer');
 const scheduler = require('./scheduler');
 
@@ -65,6 +65,7 @@ app.get('/api/me', requireAuth, (req, res) => {
     isAdmin: Boolean(req.user.is_admin),
     mailEnabled: mailEnabled(),
     chatReady: Boolean(resolveApiConfig().key),
+    ttsReady: Boolean(resolveTtsConfig().key),
   });
 });
 
@@ -123,6 +124,36 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Chat error:', err);
     res.status(500).json({ error: 'The assistant hit an error: ' + err.message });
+  }
+});
+
+// Speak a chat reply aloud via Fish Audio TTS. Returns MP3 bytes.
+app.post('/api/tts', requireAuth, async (req, res) => {
+  const { key, model, voice } = resolveTtsConfig();
+  if (!key) return res.status(400).json({ error: 'Voice is not set up yet — the administrator can add a Fish Audio key in the Admin tab.' });
+  const text = String(req.body.text || '').trim().slice(0, 3000);
+  if (!text) return res.status(400).json({ error: 'Nothing to speak.' });
+  try {
+    const upstream = await fetch('https://api.fish.audio/v1/tts', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        model,
+      },
+      body: JSON.stringify({ text, format: 'mp3', ...(voice ? { reference_id: voice } : {}) }),
+    });
+    if (!upstream.ok) {
+      const detail = (await upstream.text()).slice(0, 300);
+      console.error(`Fish Audio TTS error ${upstream.status}:`, detail);
+      return res.status(502).json({ error: `Voice service error (${upstream.status}). Check the Fish Audio key in the Admin tab.` });
+    }
+    res.setHeader('Content-Type', 'audio/mpeg');
+    const audio = Buffer.from(await upstream.arrayBuffer());
+    res.send(audio);
+  } catch (err) {
+    console.error('TTS failed:', err);
+    res.status(502).json({ error: 'Could not reach the voice service.' });
   }
 });
 
