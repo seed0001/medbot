@@ -30,7 +30,10 @@ function resolveTtsConfig() {
 // practice sandbox — fake patients, accepts any client id — so the Records tab
 // works out of the box. Point these at Cerner/Oracle Health (UAB) once the app
 // is registered in their code console.
-const DEFAULT_FHIR_BASE = process.env.FHIR_BASE_URL || 'https://launch.smarthealthit.org/v/r4/fhir';
+// The sim/… segment encodes the launcher's launch options (patient standalone
+// launch); without it the authorize endpoint fails with "Invalid launch options".
+const DEFAULT_FHIR_BASE = process.env.FHIR_BASE_URL
+  || 'https://launch.smarthealthit.org/v/r4/sim/WzMsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMV0/fhir';
 const DEFAULT_FHIR_CLIENT_ID = process.env.FHIR_CLIENT_ID || 'medbot-demo';
 
 function resolveFhirConfig() {
