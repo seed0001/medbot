@@ -156,7 +156,18 @@ button.primary-outline, .btn.primary-outline { border-color: var(--accent); colo
   max-width: 240px; white-space: normal; z-index: 5;
 }
 
-/* ---- Chat toolbar & memory ---- */
+/* ---- Records (hospital chart) ---- */
+.connect-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 24px; max-width: 560px; margin: 24px auto 0;
+}
+.connect-card h2 { margin-bottom: 10px; }
+.connect-card .hint { margin-bottom: 12px; line-height: 1.5; }
+.connect-card .btn { margin-top: 4px; }
+#records-status { color: var(--muted); font-size: 14px; }
+#records-notice { color: var(--green); font-size: 14px; min-height: 20px; margin-bottom: 6px; }
+
+/* ---- Chat toolbar & memory ----*/
 .chat-toolbar { display: flex; margin-bottom: 6px; }
 .memory-add { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .memory-add input { flex: 1; min-width: 240px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }

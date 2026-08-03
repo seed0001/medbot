@@ -45,7 +45,7 @@ function show(view) {
   $('app-view').classList.toggle('hidden', view === 'auth');
 }
 
-const loaders = { reminders: loadReminders, log: loadLog, charts: loadCharts, appts: loadAppointments, files: loadFiles, memory: loadMemory, admin: loadAdmin };
+const loaders = { reminders: loadReminders, log: loadLog, charts: loadCharts, records: loadRecords, appts: loadAppointments, files: loadFiles, memory: loadMemory, admin: loadAdmin };
 
 function showTab(tab) {
   document.querySelectorAll('main[data-panel]').forEach((m) => m.classList.toggle('hidden', m.dataset.panel !== tab));
@@ -420,6 +420,77 @@ async function loadCharts() {
     { color: '#008300', unit: 'doses', rangeDays: chartDays, agg: 'count' });
 }
 
+// ---- Records tab (hospital chart via SMART on FHIR) ----
+const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+
+async function loadRecords() {
+  const s = await api('/api/fhir/status');
+  $('records-connect').classList.toggle('hidden', s.connected);
+  $('records-data').classList.toggle('hidden', !s.connected);
+
+  if (!s.connected) {
+    $('records-server').textContent = s.server_label;
+    return;
+  }
+
+  const bits = [];
+  if (s.patient_name) bits.push(`Connected as ${s.patient_name}`);
+  else bits.push('Connected');
+  bits.push(s.server_label);
+  bits.push(s.last_sync_at ? `synced ${fmtTime(s.last_sync_at)}` : 'first sync in progress…');
+  $('records-status').textContent = bits.join(' · ');
+  $('records-reconnect').classList.toggle('hidden', s.status !== 'reauth_needed');
+  $('records-notice').textContent = s.status === 'reauth_needed'
+    ? '⚠️ The portal connection expired — press Reconnect to sign in again.'
+    : (s.last_sync_error ? '⚠️ Some sections could not be fetched: ' + s.last_sync_error : '');
+
+  const { records } = await api('/api/fhir/records');
+  const g = (cat) => records[cat] || [];
+
+  fillTable('fhir-labs', g('lab'), (r) => [
+    fmtDate(r.effective_at), r.title, r.value || '—', { text: r.detail || '', cls: 'note' },
+  ]);
+  fillTable('fhir-vitals', g('vital'), (r) => [fmtDate(r.effective_at), r.title, r.value || '—']);
+  fillTable('fhir-meds', g('medication'), (r) => [
+    r.title, r.status || '—', { text: r.detail || '', cls: 'note' }, fmtDate(r.effective_at),
+  ]);
+  fillTable('fhir-conditions', g('condition'), (r) => [r.title, r.value || '—', fmtDate(r.effective_at)]);
+  fillTable('fhir-allergies', g('allergy'), (r) => [
+    r.title, { text: r.value || '—', cls: 'note' }, { text: r.detail || '', cls: 'note' }, fmtDate(r.effective_at),
+  ]);
+  fillTable('fhir-imms', g('immunization'), (r) => [r.title, fmtDate(r.effective_at), r.status || '—']);
+  fillTable('fhir-appts', g('appointment'), (r) => [
+    r.effective_at ? fmtTime(r.effective_at) : '—', r.title, { text: r.detail || '', cls: 'note' }, r.status || '—',
+  ]);
+
+  // First sync may still be running right after the redirect back — retry once.
+  if (!s.last_sync_at && !loadRecords.retried) {
+    loadRecords.retried = true;
+    setTimeout(() => { if (!$('records-data').classList.contains('hidden')) loadRecords().catch(() => {}); }, 4000);
+  }
+}
+
+$('records-sync').addEventListener('click', async () => {
+  const btn = $('records-sync');
+  btn.disabled = true;
+  btn.textContent = 'Syncing…';
+  try {
+    const r = await api('/api/fhir/sync', { method: 'POST' });
+    $('records-notice').textContent = r.errors?.length ? '⚠️ Some sections could not be fetched: ' + r.errors.join(' | ') : '✅ Records are up to date.';
+    await loadRecords();
+  } catch (err) {
+    $('records-notice').textContent = '⚠️ ' + err.message;
+  }
+  btn.disabled = false;
+  btn.textContent = '🔄 Sync now';
+});
+
+$('records-disconnect').addEventListener('click', async () => {
+  if (!confirm('Disconnect your hospital records? The copied records are deleted from MedBot. You can reconnect any time.')) return;
+  await api('/api/fhir/disconnect', { method: 'POST' });
+  loadRecords();
+});
+
 // ---- Appointments tab ----
 async function loadAppointments() {
   const { appointments } = await api('/api/appointments?all=1');
@@ -591,6 +662,9 @@ async function loadAdmin() {
     : 'No key yet — voice replies are off. Get a free key at fish.audio (Developers → API keys).';
   $('admin-tts-model').textContent = s.tts_model;
   $('admin-tts-voice').value = s.tts_voice;
+  $('admin-fhir-base').value = s.fhir_base_url;
+  $('admin-default-fhir-base').textContent = s.default_fhir_base;
+  $('admin-fhir-client').value = s.fhir_client_id;
 
   const { users } = await api('/api/admin/users');
   fillTable('admin-users', users, (u) => {
@@ -627,6 +701,8 @@ $('admin-form').addEventListener('submit', async (e) => {
       router_model: $('admin-router-model').value,
       persona: $('admin-persona').value,
       tts_voice: $('admin-tts-voice').value,
+      fhir_base_url: $('admin-fhir-base').value,
+      fhir_client_id: $('admin-fhir-client').value,
     };
     // Only send keys if a new one was typed, so leaving them blank keeps the saved keys.
     if ($('admin-key').value.trim()) body.openrouter_key = $('admin-key').value.trim();
@@ -671,6 +747,17 @@ async function enterApp() {
 (async () => {
   try {
     await enterApp();
+    // Coming back from the hospital portal: /?tab=records[&fhir=connected|&fhir_error=...]
+    const params = new URLSearchParams(location.search);
+    if (params.get('tab')) {
+      showTab(params.get('tab'));
+      const err = params.get('fhir_error');
+      if (err) {
+        $('records-connect-notice').textContent = '⚠️ ' + err;
+        $('records-notice').textContent = '⚠️ ' + err;
+      }
+      history.replaceState({}, '', location.pathname);
+    }
   } catch {
     show('auth');
   }

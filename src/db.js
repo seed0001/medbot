@@ -133,6 +133,43 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+-- Hospital records (SMART on FHIR). One portal connection per user; tokens
+-- are refreshed in the background. status: active | reauth_needed.
+CREATE TABLE IF NOT EXISTS fhir_connections (
+  user_id          INTEGER PRIMARY KEY REFERENCES users(id),
+  fhir_base        TEXT NOT NULL,
+  client_id        TEXT NOT NULL,
+  patient_id       TEXT,
+  patient_name     TEXT,
+  access_token     TEXT,
+  refresh_token    TEXT,
+  token_expires_at TEXT,
+  scope            TEXT,
+  status           TEXT NOT NULL DEFAULT 'active',
+  connected_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  last_sync_at     TEXT,
+  last_sync_error  TEXT
+);
+
+-- Normalized copies of chart data pulled from the FHIR server, replaced
+-- wholesale per category on each sync. category: lab | vital | medication |
+-- condition | allergy | immunization | appointment.
+CREATE TABLE IF NOT EXISTS fhir_records (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER NOT NULL REFERENCES users(id),
+  category     TEXT NOT NULL,
+  fhir_id      TEXT NOT NULL,
+  title        TEXT,
+  value        TEXT,
+  detail       TEXT,
+  status       TEXT,
+  effective_at TEXT,
+  raw          TEXT,
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE(user_id, category, fhir_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fhir_records_user ON fhir_records(user_id, category, effective_at);
 CREATE INDEX IF NOT EXISTS idx_readings_user ON readings(user_id, taken_at);
 CREATE INDEX IF NOT EXISTS idx_med_events_user ON med_events(user_id, taken_at);
 CREATE INDEX IF NOT EXISTS idx_meals_user ON meals(user_id, eaten_at);

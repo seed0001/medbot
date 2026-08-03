@@ -1,6 +1,7 @@
 const db = require('./db');
 const { sendMail, mailEnabled } = require('./mailer');
 const { fireDueRecurring } = require('./recurring');
+const { syncStale } = require('./fhir');
 
 const CHECK_INTERVAL_MS = 60 * 1000;
 
@@ -72,6 +73,8 @@ function tick() {
   sendDueReminders().catch((e) => console.error('Reminder check failed:', e));
   // Recurring reminders post to chat, so they run even without SMTP.
   fireDueRecurring().catch((e) => console.error('Recurring reminder check failed:', e));
+  // Hospital records refresh (no-op unless a connection is >6h stale).
+  syncStale().catch((e) => console.error('FHIR auto-sync check failed:', e));
 }
 
 function start() {

@@ -16,8 +16,10 @@ const { collectData, buildReportHtml, emailReport, csvOf } = require('./report')
 const { publicAppSettings, saveAppSettings, resolveApiConfig, resolveTtsConfig } = require('./settings');
 const { mailEnabled } = require('./mailer');
 const scheduler = require('./scheduler');
+const fhir = require('./fhir');
 
 const app = express();
+app.set('trust proxy', 1); // Railway sits behind a proxy; req.protocol should say https there
 const PORT = process.env.PORT || 3000;
 const PROD = process.env.NODE_ENV === 'production' || Boolean(process.env.RAILWAY_ENVIRONMENT);
 
@@ -333,6 +335,53 @@ app.post('/api/email-report', requireAuth, async (req, res) => {
 
 app.post('/api/stop-reminders', requireAuth, (req, res) => {
   res.json(stopReminders(req.user.id));
+});
+
+// --- Hospital records (SMART on FHIR) ---
+// The connect/callback pair are full-page navigations (not fetch calls): the
+// portal's login page must take over the whole window and then bounce back.
+function fhirRedirectUri(req) {
+  const origin = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  return origin.replace(/\/+$/, '') + '/fhir/callback';
+}
+
+app.get('/fhir/connect', requireAuth, async (req, res) => {
+  try {
+    res.redirect(await fhir.beginConnect(req.user.id, fhirRedirectUri(req)));
+  } catch (err) {
+    console.error('FHIR connect failed:', err.message);
+    res.redirect('/?tab=records&fhir_error=' + encodeURIComponent(err.message));
+  }
+});
+
+app.get('/fhir/callback', async (req, res) => {
+  try {
+    await fhir.handleCallback(req.query);
+    res.redirect('/?tab=records&fhir=connected');
+  } catch (err) {
+    console.error('FHIR callback failed:', err.message);
+    res.redirect('/?tab=records&fhir_error=' + encodeURIComponent(err.message));
+  }
+});
+
+app.get('/api/fhir/status', requireAuth, (req, res) => {
+  res.json(fhir.getStatus(req.user.id));
+});
+
+app.get('/api/fhir/records', requireAuth, (req, res) => {
+  res.json({ records: fhir.getRecords(req.user.id) });
+});
+
+app.post('/api/fhir/sync', requireAuth, async (req, res) => {
+  try {
+    res.json(await fhir.syncNow(req.user.id));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/fhir/disconnect', requireAuth, (req, res) => {
+  res.json(fhir.disconnect(req.user.id));
 });
 
 app.listen(PORT, () => {

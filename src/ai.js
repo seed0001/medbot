@@ -7,6 +7,7 @@ const { addRecurring, listRecurring, cancelRecurring } = require('./recurring');
 const { createUserFile, listUserFiles } = require('./filesStore');
 const { resolveApiConfig } = require('./settings');
 const { saveMemory, forgetMemory, searchMemories, memoryContext, summarizeEpisodeIfNeeded } = require('./memory');
+const { recordsForAI } = require('./fhir');
 const { nowLocalString, TIMEZONE } = require('./time');
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -29,6 +30,7 @@ Everything you can do (when asked "what can you do", explain these in plain, fri
 - Documents: create files (notes, question lists for the doctor, summaries, letters) that appear in their Files tab
 - History & trends: summarize their data concretely; the Charts tab has visuals, the Doctor Report button makes a printable summary they can email or print for appointments, and every table exports to CSV
 - Memory: you remember lasting facts about them and can recall past conversations
+- Hospital records: if they've connected their patient portal in the Records tab, you can READ their official hospital chart with get_medical_records — lab results, vitals, the hospital's medication list, diagnoses, allergies, immunizations, and hospital appointments. This is read-only: you can look things up and explain them, but nothing you or the user do here changes anything at the hospital. If records aren't connected yet and they ask about labs or their chart, tell them to open the Records tab and press "Connect my records".
 
 Where things live in the app (tabs across the top): Chat (talking with you), Reminders, Log (all the tables plus the Doctor Report and email buttons), Charts, Appointments, Files, Memory (what you remember about them — they can correct it there).
 
@@ -46,6 +48,7 @@ Behavior:
 - After a glucose reading, if there was a previous one, state the change clearly (e.g. "down 42 from 180 at ten past noon").
 - If a value seems implausible (glucose 12 mg/dL, insulin 100 units), ask before logging.
 - When asked about history or trends, use get_health_summary and answer concretely. Mention the Charts tab for visuals and the Doctor Report button for a printable summary.
+- When asked about lab results, diagnoses, or anything from their hospital chart, use get_medical_records. Always say the date of a result out loud, and explain results in plain language without alarming them — if something is flagged abnormal, note it calmly and suggest discussing it with their care team. Home readings (their log here) and hospital labs are different sources; when comparing, say which is which.
 - For documents, write clean, well-organized content. Prefer .md or .txt for notes and .csv for tabular data. Tell them the file is in the Files tab.
 - When a reminder of yours has recently fired in the conversation and they respond ("okay, took it", "done"), log the dose or reading they're confirming.
 - NEVER say you set a reminder, logged something, or saved anything unless you actually called the tool in this conversation and it returned success. If a tool returns an error, tell the user plainly what went wrong.
@@ -201,6 +204,23 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'get_medical_records',
+      description: "Read the user's official hospital chart (read-only), if they've connected their patient portal in the Records tab: lab results, vitals, the hospital's medication list, conditions/diagnoses, allergies, immunizations, and hospital appointments. Use for questions like 'what was my A1c?', 'what did my labs say?', 'what am I diagnosed with?'.",
+      parameters: {
+        type: 'object',
+        properties: {
+          category: {
+            type: 'string',
+            enum: ['labs', 'vitals', 'hospital_medication_list', 'conditions', 'allergies', 'immunizations', 'hospital_appointments'],
+            description: 'Fetch just one section (omit to get the whole chart summary)',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_document',
       description: "Create a file in the user's Files tab (downloadable). Allowed extensions: .txt, .md, .csv, .html, .json. Use for notes, summaries, question lists for the doctor, exported data, letters, etc.",
       parameters: {
@@ -344,6 +364,7 @@ function runTool(userId, name, args) {
     case 'list_appointments': return { appointments: listAppointments(userId, Boolean(args.include_past)) };
     case 'cancel_appointment': return cancelAppointment(userId, args.id);
     case 'get_health_summary': return healthSummary(userId, args.days || 14);
+    case 'get_medical_records': return recordsForAI(userId, args.category || null);
     case 'create_document': return createUserFile(userId, args.filename, args.content);
     case 'list_files': return { files: listUserFiles(userId) };
     case 'schedule_reminder':

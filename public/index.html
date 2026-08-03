@@ -34,6 +34,7 @@
       <button class="tab" data-tab="reminders">Reminders</button>
       <button class="tab" data-tab="log">Log</button>
       <button class="tab" data-tab="charts">Charts</button>
+      <button class="tab" data-tab="records">Records</button>
       <button class="tab" data-tab="appts">Appointments</button>
       <button class="tab" data-tab="files">Files</button>
       <button class="tab" data-tab="memory">Memory</button>
@@ -143,6 +144,78 @@
     <section class="chart-card"><h2>Medication doses taken per day</h2><div class="chart" id="chart-meds"></div></section>
   </main>
 
+  <main data-panel="records" class="hidden">
+    <div id="records-connect" class="hidden">
+      <section class="connect-card">
+        <h2>🏥 Your hospital records</h2>
+        <p class="hint">Connect your hospital patient portal and MedBot pulls a read-only copy of your official chart — lab results, vitals, medications, diagnoses, allergies, and immunizations. You sign in on the hospital's own login page; MedBot never sees your portal password and can never change anything at the hospital. Once connected, you can ask the assistant things like "what was my last A1c?".</p>
+        <p class="hint">Records server: <b id="records-server"></b></p>
+        <a class="btn primary" href="/fhir/connect">🔗 Connect my records</a>
+        <p id="records-connect-notice" class="error"></p>
+      </section>
+    </div>
+
+    <div id="records-data" class="hidden">
+      <div class="log-toolbar">
+        <span id="records-status"></span>
+        <span class="spacer"></span>
+        <a id="records-reconnect" class="btn primary hidden" href="/fhir/connect">🔗 Reconnect</a>
+        <button id="records-sync" class="btn">🔄 Sync now</button>
+        <button id="records-disconnect" class="btn danger">Disconnect</button>
+      </div>
+      <p id="records-notice"></p>
+
+      <section>
+        <h2>Lab results</h2>
+        <div class="table-wrap"><table id="fhir-labs">
+          <thead><tr><th>Date</th><th>Test</th><th>Result</th><th>Flag / range</th></tr></thead>
+          <tbody></tbody></table></div>
+      </section>
+
+      <section>
+        <h2>Vitals</h2>
+        <div class="table-wrap"><table id="fhir-vitals">
+          <thead><tr><th>Date</th><th>Vital</th><th>Value</th></tr></thead>
+          <tbody></tbody></table></div>
+      </section>
+
+      <section>
+        <h2>Hospital medication list</h2>
+        <div class="table-wrap"><table id="fhir-meds">
+          <thead><tr><th>Medication</th><th>Status</th><th>Instructions</th><th>Written</th></tr></thead>
+          <tbody></tbody></table></div>
+      </section>
+
+      <section>
+        <h2>Conditions</h2>
+        <div class="table-wrap"><table id="fhir-conditions">
+          <thead><tr><th>Condition</th><th>Status</th><th>Since</th></tr></thead>
+          <tbody></tbody></table></div>
+      </section>
+
+      <section>
+        <h2>Allergies</h2>
+        <div class="table-wrap"><table id="fhir-allergies">
+          <thead><tr><th>Allergy</th><th>Reaction</th><th>Notes</th><th>Recorded</th></tr></thead>
+          <tbody></tbody></table></div>
+      </section>
+
+      <section>
+        <h2>Immunizations</h2>
+        <div class="table-wrap"><table id="fhir-imms">
+          <thead><tr><th>Vaccine</th><th>Date</th><th>Status</th></tr></thead>
+          <tbody></tbody></table></div>
+      </section>
+
+      <section>
+        <h2>Hospital appointments</h2>
+        <div class="table-wrap"><table id="fhir-appts">
+          <thead><tr><th>When</th><th>What</th><th>With</th><th>Status</th></tr></thead>
+          <tbody></tbody></table></div>
+      </section>
+    </div>
+  </main>
+
   <main data-panel="appts" class="hidden">
     <div class="log-toolbar">
       <span class="hint">Add or change appointments by telling the assistant in Chat — e.g. "I see Dr. Smith next Tuesday at 2pm."</span>
@@ -231,6 +304,14 @@
         <label>Voice (optional)
           <input type="text" id="admin-tts-voice" placeholder="Fish Audio voice ID — leave blank for the default voice">
           <span class="hint">Model: <span id="admin-tts-model"></span>. Browse voices at fish.audio and paste a voice's ID here to change how the assistant sounds.</span>
+        </label>
+        <label>Hospital records (FHIR) server URL
+          <input type="text" id="admin-fhir-base" placeholder="leave blank for the practice sandbox">
+          <span class="hint">Default: <span id="admin-default-fhir-base"></span> (fake practice patients). For Cerner's sandbox use https://fhir-myrecord.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d — and once the app is approved for UAB, the production URL Oracle Health provides.</span>
+        </label>
+        <label>Hospital records app client ID
+          <input type="text" id="admin-fhir-client" placeholder="leave blank for the sandbox default">
+          <span class="hint">From registering the app at code.cerner.com (code console). The practice sandbox accepts any ID, so this only matters for Cerner/UAB.</span>
         </label>
         <label>Assistant persona
           <textarea id="admin-persona" rows="5" placeholder="e.g. Speak like a cheerful old friend. Address the user as Miss Dorothy. Keep answers to a sentence or two."></textarea>
